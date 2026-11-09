@@ -8,9 +8,10 @@ import { initSettings } from './ui/settings.js';
 import { initFood } from './ui/food.js';
 import { initTraining } from './ui/training.js';
 import { initProgress } from './ui/progress.js';
+import { initAccount } from './ui/account.js';
 import { $, $$, toast } from './ui/dom.js';
 
-export const APP_VERSION = '0.3.0';
+export const APP_VERSION = '0.4.0';
 const ROUTES = ['overview', 'food', 'workouts', 'progress', 'settings'];
 
 function showRoute(route, { focus }) {
@@ -25,6 +26,7 @@ function showRoute(route, { focus }) {
 }
 
 function currentRoute() {
+  if (location.hash.startsWith('#account/')) return 'settings';
   const hash = location.hash.replace('#', '');
   return ROUTES.includes(hash) ? hash : 'overview';
 }
@@ -48,6 +50,8 @@ function start() {
   initProgress(store);
   initWeights(store);
   initSettings(store);
+  const account = initAccount(store);
+  if (location.hash.startsWith('#account/')) account.handleLink(location.hash);
 
   // Links that jump to the methods section on the overview.
   for (const link of $$('[data-scroll="methods"]')) {
@@ -66,7 +70,10 @@ function start() {
     });
   }
 
-  window.addEventListener('hashchange', () => showRoute(currentRoute(), { focus: true }));
+  window.addEventListener('hashchange', () => {
+    if (location.hash.startsWith('#account/')) account.handleLink(location.hash);
+    showRoute(currentRoute(), { focus: true });
+  });
   showRoute(currentRoute(), { focus: false });
   document.documentElement.dataset.ready = 'true';
 }

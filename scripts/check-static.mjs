@@ -57,7 +57,7 @@ for (const file of htmlFiles) {
   for (const [, url] of html.matchAll(/\b(?:href|src)="([^"]+)"/g)) {
     if (/^(https?:|mailto:|#|data:)/.test(url)) continue;
     const target = url.startsWith('/') ? path.join(ROOT, url) : path.join(path.dirname(file), url);
-    if (!existsSync(target.split('?')[0])) problems.push(`${rel}: missing ${url}`);
+    if (!existsSync(target.split(/[?#]/)[0])) problems.push(`${rel}: missing ${url}`);
   }
 }
 

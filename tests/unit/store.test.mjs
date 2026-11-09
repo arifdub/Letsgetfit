@@ -64,7 +64,7 @@ test('unversioned legacy data is migrated and rewritten', () => {
   assert.equal(s.workouts.length, 1);
   assert.deepEqual(s.weights, []);
   assert.equal(JSON.parse(backend.getItem(STORAGE_KEY)).schemaVersion, SCHEMA_VERSION);
-  assert.deepEqual(migrate(null), { schemaVersion: 3, preferences: { units: 'metric' }, profile: null, workouts: [], weights: [], foods: [], diary: [], draftSession: null });
+  assert.deepEqual(migrate(null), { schemaVersion: 4, preferences: { units: 'metric' }, profile: null, workouts: [], weights: [], foods: [], diary: [], draftSession: null, sync: { linked: false, email: null, cursor: null, lastPushAt: null, lastSyncAt: null }, tombstones: [] });
 });
 
 test('Phase 1 (v1) data stays readable after the v2 upgrade', () => {
@@ -191,7 +191,7 @@ test('v2 data (Phase 2) upgrades to v3 keeping diary and foods', () => {
   };
   backend.setItem(STORAGE_KEY, JSON.stringify(v2));
   const s = new Store({ backend });
-  assert.equal(s.data.schemaVersion, 3);
+  assert.equal(s.data.schemaVersion, 4);
   assert.equal(s.workouts[0].type, 'activity');
   assert.equal(s.foods.length, 1);
   assert.equal(s.diary.length, 1);
@@ -208,4 +208,19 @@ test('draft session persists without notifying listeners, and clears', () => {
   assert.equal(new Store({ backend }).draftSession.title, 'Gym A');
   s.saveDraftSession(null);
   assert.equal(new Store({ backend }).draftSession, null);
+});
+
+test('deletions leave tombstones only on a device linked to an account', () => {
+  const s = new Store({ backend: memoryBackend() });
+  const a = s.addWeight({ localDate: '2026-11-01', weightKg: 80 });
+  s.deleteWeight(a.id);
+  assert.deepEqual(s.tombstones, []);
+  s.setSync({ linked: true, email: 'a@example.ie' });
+  const b = s.addWeight({ localDate: '2026-11-02', weightKg: 79 });
+  s.deleteWeight(b.id);
+  assert.equal(s.tombstones.length, 1);
+  assert.equal(s.tombstones[0].id, b.id);
+  assert.equal(s.tombstones[0].collection, 'weights');
+  s.setUnits('imperial');
+  assert.match(s.data.preferences.updatedAt, /Z$/);
 });

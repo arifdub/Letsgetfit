@@ -4,6 +4,7 @@
 //   { schemaVersion, preferences, profile, workouts[], weights[], foods[], diary[] }
 // v1 (Phase 1): profile, workouts, weights. v2 (Phase 2): adds the food library and diary.
 // v3 (Phase 3): workouts get a `type` ('activity' or 'session'); adds `draftSession`.
+// v4 (Phase 4): adds `sync` state and `tombstones` (deletions waiting to reach the account).
 // Units are canonical metric (cm, kg, kcal). Entry dates are local "YYYY-MM-DD"; createdAt and
 // updatedAt are ISO 8601 UTC timestamps. Each record has a stable random ID so that a later
 // opt-in sync (Phase 4) can de-duplicate safely.
@@ -15,7 +16,7 @@
 import { nowUtcIso } from '../lib/dates.js';
 
 export const STORAGE_KEY = 'letsgetfit.data';
-export const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 4;
 
 /** migrations[n] upgrades data from version n-1 to version n. */
 export const migrations = {
@@ -38,10 +39,20 @@ export const migrations = {
     workouts: (Array.isArray(data?.workouts) ? data.workouts : []).map((w) => (w && !w.type ? { ...w, type: 'activity' } : w)),
     draftSession: data?.draftSession ?? null,
   }),
+  4: (data) => ({
+    ...data,
+    schemaVersion: 4,
+    sync: data?.sync ?? emptySync(),
+    tombstones: Array.isArray(data?.tombstones) ? data.tombstones : [],
+  }),
 };
 
+export function emptySync() {
+  return { linked: false, email: null, cursor: null, lastPushAt: null, lastSyncAt: null };
+}
+
 export function emptyData() {
-  return { schemaVersion: SCHEMA_VERSION, preferences: { units: 'metric' }, profile: null, workouts: [], weights: [], foods: [], diary: [], draftSession: null };
+  return { schemaVersion: SCHEMA_VERSION, preferences: { units: 'metric' }, profile: null, workouts: [], weights: [], foods: [], diary: [], draftSession: null, sync: emptySync(), tombstones: [] };
 }
 
 export function migrate(data) {
@@ -203,7 +214,7 @@ export class Store {
   /** Display and entry units only. Stored values are always metric. */
   setUnits(units) {
     const next = units === 'imperial' ? 'imperial' : 'metric';
-    this.#commit({ ...this.data, preferences: { ...this.data.preferences, units: next } });
+    this.#commit({ ...this.data, preferences: { ...this.data.preferences, units: next, updatedAt: nowUtcIso() } });
   }
 
   #add(collection, value) {
@@ -225,7 +236,37 @@ export class Store {
   }
 
   #remove(collection, id) {
-    this.#commit({ ...this.data, [collection]: this.data[collection].filter((r) => r.id !== id) });
+    const next = { ...this.data, [collection]: this.data[collection].filter((r) => r.id !== id) };
+    // On a device linked to an account, remember the deletion so it reaches other devices.
+    if (this.data.sync?.linked) next.tombstones = [...(this.data.tombstones ?? []), { collection, id, deletedAt: nowUtcIso() }];
+    this.#commit(next);
+  }
+
+  get sync() {
+    return this.data.sync ?? emptySync();
+  }
+
+  get tombstones() {
+    return this.data.tombstones ?? [];
+  }
+
+  setSync(patch) {
+    this.#commit({ ...this.data, sync: { ...this.sync, ...patch } });
+  }
+
+  /** Remove pushed tombstones (a Set of "collection|id"), or all of them when passed null. */
+  clearTombstones(keys) {
+    const tombstones = keys === null ? [] : this.tombstones.filter((t) => !keys.has(`${t.collection}|${t.id}`));
+    this.#commit({ ...this.data, tombstones });
+  }
+
+  /** Replace synced collections after a merge, and optionally clear pushed tombstones. */
+  applySynced(merged, { clearTombstones = false, sync = {} } = {}) {
+    const next = { ...this.data };
+    for (const key of ['profile', 'preferences', 'workouts', 'weights', 'foods', 'diary']) next[key] = merged[key];
+    if (clearTombstones) next.tombstones = [];
+    next.sync = { ...this.sync, ...sync };
+    this.#commit(next);
   }
 
   addWorkout(value) {

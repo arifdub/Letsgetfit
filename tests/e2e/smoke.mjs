@@ -46,6 +46,7 @@ async function mockApi(page, { health = 'configured', search } = {}) {
       ? route.fulfill({ status: 503, contentType: 'application/json', body: '{"error":"not_configured"}' })
       : route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, php: '8.3', foodSearch: health }) }),
   );
+  await page.route('**/api/account.php?*', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: '{"enabled":false}' }));
   await page.route('**/api/foods.php?*', (route) => {
     const q = new URL(route.request().url()).searchParams.get('q');
     if (search) return search(route, q);
@@ -86,6 +87,10 @@ await check('loads without errors and shows only working navigation', async () =
   assert.deepEqual(nav.map((t) => t.trim()), ['Overview', 'Food', 'Workouts', 'Progress', 'Settings']);
   assert.equal(await page.locator('#profile-form').isVisible(), true);
   assert.equal(await page.getAttribute('html', 'lang'), 'en-IE');
+  // Without the account API (static host, or accounts switched off) the account card stays hidden.
+  await page.goto(`${BASE}#settings`);
+  await page.waitForTimeout(300);
+  assert.equal(await page.isVisible('#account-card'), false);
   assert.deepEqual(errors, []);
   await context.close();
 });
@@ -406,7 +411,7 @@ await check('food: empty day, search, add with grams, totals and persistence', a
   assert.match(await page.textContent('tr[data-nutrient="potassium"]'), /161 mg/);
   // Stored with source, ID, per-100 g values, units, grams and a nutrient snapshot.
   const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('letsgetfit.data')));
-  assert.equal(stored.schemaVersion, 3);
+  assert.equal(stored.schemaVersion, 4);
   const entry = stored.diary[0];
   assert.equal(entry.source, 'usda-fdc');
   assert.equal(entry.sourceId, '171688');
@@ -614,7 +619,7 @@ await check('food: Phase 1 data is kept after the upgrade', async () => {
   await page.waitForSelector('[data-meal="lunch"] .entry');
   assert.match(await page.textContent('#day-totals'), /maintenance estimate is about 3,290 kcal/);
   const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('letsgetfit.data')));
-  assert.equal(stored.schemaVersion, 3);
+  assert.equal(stored.schemaVersion, 4);
   assert.equal(stored.workouts.length, 1);
   assert.equal(stored.weights.length, 1);
   await context.close();
@@ -864,7 +869,7 @@ await check('training: Phase 2 (v2) data upgrades and old workouts still show', 
   await openWorkouts(page);
   assert.match(await page.textContent('#workout-list'), /Yoga, hatha/);
   const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('letsgetfit.data')));
-  assert.equal(stored.schemaVersion, 3);
+  assert.equal(stored.schemaVersion, 4);
   assert.equal(stored.workouts[0].type, 'activity');
   assert.equal(stored.diary.length, 1);
   await context.close();

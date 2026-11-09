@@ -554,6 +554,10 @@ input[type="radio"], input[type="checkbox"] {
   .chart-dot { fill: Highlight; }
 }
 
+.checkbox--top { align-items: flex-start; font-weight: 400; }
+.checkbox--top input { margin-top: 0.25rem; }
+.form-status:empty { display: none; }
+
 [hidden] { display: none !important; }
 
 @media (prefers-reduced-motion: reduce) {
