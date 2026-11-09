@@ -1,0 +1,301 @@
+<!doctype html>
+<html lang="en-IE">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>LetsGetFit</title>
+  <meta name="description" content="Estimate your daily energy needs, see a balanced maintenance-day example, and log workouts and weight. Your data stays on this device.">
+  <meta name="theme-color" content="#0f6b5c" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0d1715" media="(prefers-color-scheme: dark)">
+  <meta name="color-scheme" content="light dark">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="assets/css/app.css">
+  <script type="module" src="assets/js/app.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to main content</a>
+
+  <header class="site-header">
+    <div class="site-header__inner">
+      <a class="brand" href="#overview" aria-label="LetsGetFit home">
+        <img src="favicon.svg" alt="" width="32" height="32">
+        <span>LetsGetFit</span>
+      </a>
+      <nav class="primary-nav" aria-label="Main">
+        <ul>
+          <li><a href="#overview" data-route="overview"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 11 12 4l8 7v9a1 1 0 0 1-1 1h-5v-6h-4v6H5a1 1 0 0 1-1-1z"/></svg><span>Overview</span></a></li>
+          <li><a href="#workouts" data-route="workouts"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M3 10v4M6 7v10M18 7v10M21 10v4M6 12h12"/></svg><span>Workouts</span></a></li>
+          <li><a href="#progress" data-route="progress"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 19h16M5 15l4-4 4 3 6-7"/></svg><span>Progress</span></a></li>
+          <li><a href="#settings" data-route="settings"><svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1"/></svg><span>Settings</span></a></li>
+        </ul>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main" tabindex="-1">
+    <noscript>
+      <div class="banner banner--warning">LetsGetFit needs JavaScript to calculate estimates and keep your logs on this device. Turn on JavaScript, or use a browser that supports it.</div>
+    </noscript>
+    <div id="app-notice" class="banner banner--warning" role="alert" hidden></div>
+
+    <!-- OVERVIEW -->
+    <section id="view-overview" class="view" data-view="overview" aria-labelledby="overview-title">
+      <h1 id="overview-title" class="view__title" tabindex="-1">Overview</h1>
+
+      <div id="overview-loading" class="state state--loading" role="status">Loading your details…</div>
+
+      <div id="overview-intro" class="card intro" hidden>
+        <p class="lead">Estimate the energy your body uses in a typical day, see a balanced maintenance-day example, and keep simple workout and weight logs.</p>
+        <p>Everything you enter stays in this browser on this device. Nothing is sent to a server.</p>
+      </div>
+
+      <form id="profile-form" class="card form" novalidate hidden aria-labelledby="profile-form-title">
+        <h2 id="profile-form-title">Your details</h2>
+        <p class="muted">All fields are needed for the calculation. Each one explains why.</p>
+
+        <div id="profile-errors" class="error-summary" role="alert" tabindex="-1" hidden>
+          <h3>Please check the following</h3>
+          <ul></ul>
+        </div>
+
+        <fieldset class="field">
+          <legend>Units</legend>
+          <p class="hint" id="units-hint">Metric is the default. Imperial values are converted to metric once and stored in metric.</p>
+          <div class="segmented">
+            <label><input type="radio" name="units" value="metric" checked aria-describedby="units-hint"> Metric (cm, kg)</label>
+            <label><input type="radio" name="units" value="imperial" aria-describedby="units-hint"> Imperial (ft, st)</label>
+          </div>
+        </fieldset>
+
+        <div class="field" data-field="ageYears">
+          <label for="ageYears">Age <span class="unit">years</span></label>
+          <p class="hint" id="ageYears-hint">Resting energy use falls slightly with age. The calculator is for adults aged 20 to 78.</p>
+          <input id="ageYears" name="ageYears" type="text" inputmode="numeric" autocomplete="off" aria-describedby="ageYears-hint ageYears-error" class="input input--short">
+          <p class="field-error" id="ageYears-error" hidden></p>
+        </div>
+
+        <div class="field" data-field="height">
+          <fieldset>
+            <legend>Height</legend>
+            <p class="hint" id="height-hint">Taller bodies use more energy at rest. Height is also needed for BMI.</p>
+            <div class="units-metric inline-inputs">
+              <label for="heightCm" class="visually-hidden">Height in centimetres</label>
+              <input id="heightCm" name="heightCm" type="text" inputmode="decimal" autocomplete="off" aria-describedby="height-hint height-error" class="input input--short">
+              <span class="unit" aria-hidden="true">cm</span>
+            </div>
+            <div class="units-imperial inline-inputs" hidden>
+              <label for="heightFt">ft</label>
+              <input id="heightFt" name="heightFt" type="text" inputmode="numeric" autocomplete="off" aria-describedby="height-hint height-error" class="input input--tiny">
+              <label for="heightIn">in</label>
+              <input id="heightIn" name="heightIn" type="text" inputmode="decimal" autocomplete="off" aria-describedby="height-hint height-error" class="input input--tiny">
+            </div>
+          </fieldset>
+          <p class="field-error" id="height-error" hidden></p>
+        </div>
+
+        <div class="field" data-field="weight">
+          <fieldset>
+            <legend>Current weight</legend>
+            <p class="hint" id="weight-hint">Body weight is the largest single input to resting energy. It is also needed for BMI and the protein example.</p>
+            <div class="units-metric inline-inputs">
+              <label for="weightKg" class="visually-hidden">Weight in kilograms</label>
+              <input id="weightKg" name="weightKg" type="text" inputmode="decimal" autocomplete="off" aria-describedby="weight-hint weight-error" class="input input--short">
+              <span class="unit" aria-hidden="true">kg</span>
+            </div>
+            <div class="units-imperial inline-inputs" hidden>
+              <label for="weightSt">st</label>
+              <input id="weightSt" name="weightSt" type="text" inputmode="numeric" autocomplete="off" aria-describedby="weight-hint weight-error" class="input input--tiny">
+              <label for="weightLb">lb</label>
+              <input id="weightLb" name="weightLb" type="text" inputmode="decimal" autocomplete="off" aria-describedby="weight-hint weight-error" class="input input--tiny">
+            </div>
+          </fieldset>
+          <p class="field-error" id="weight-error" hidden></p>
+        </div>
+
+        <div class="field" data-field="sex">
+          <fieldset aria-describedby="sex-hint sex-error">
+            <legend>Equation coefficient</legend>
+            <p class="hint" id="sex-hint">The Mifflin–St Jeor equation was developed with one constant for women (−161&nbsp;kcal) and one for men (+5&nbsp;kcal). Choose the one that best matches your body for this estimate. A dietitian or GP can give a more personal estimate if neither fits.</p>
+            <div class="choices">
+              <label class="choice"><input type="radio" name="sex" value="female"> <span>Female coefficient</span></label>
+              <label class="choice"><input type="radio" name="sex" value="male"> <span>Male coefficient</span></label>
+            </div>
+          </fieldset>
+          <p class="field-error" id="sex-error" hidden></p>
+        </div>
+
+        <div class="field" data-field="activityLevel">
+          <fieldset aria-describedby="activity-hint activityLevel-error">
+            <legend>Usual activity in a typical week</legend>
+            <p class="hint" id="activity-hint">Include your job, getting around and any regular exercise. Your usual exercise is counted here, so logged workouts are not added again.</p>
+            <div class="choices" id="activity-choices"></div>
+          </fieldset>
+          <p class="field-error" id="activityLevel-error" hidden></p>
+        </div>
+
+        <div class="field" data-field="pregnancy">
+          <fieldset aria-describedby="pregnancy-hint pregnancy-error">
+            <legend>Are you pregnant or breastfeeding?</legend>
+            <p class="hint" id="pregnancy-hint">Energy and nutrient needs change during pregnancy and breastfeeding, and this calculator does not cover them.</p>
+            <div class="segmented">
+              <label><input type="radio" name="pregnancy" value="no"> No</label>
+              <label><input type="radio" name="pregnancy" value="yes"> Yes</label>
+            </div>
+          </fieldset>
+          <p class="field-error" id="pregnancy-error" hidden></p>
+        </div>
+
+        <div class="form__actions">
+          <button type="submit" class="button button--primary">Calculate my estimates</button>
+          <button type="button" class="button button--ghost" id="profile-cancel" hidden>Cancel</button>
+        </div>
+      </form>
+
+      <div id="overview-results" hidden></div>
+    </section>
+
+    <!-- WORKOUTS -->
+    <section id="view-workouts" class="view" data-view="workouts" aria-labelledby="workouts-title" hidden>
+      <h1 id="workouts-title" class="view__title" tabindex="-1">Workouts</h1>
+      <p class="muted">Log what you did. Your usual exercise is already part of the activity level in your maintenance estimate, so workouts here are not added on top of it.</p>
+
+      <form id="workout-form" class="card form" novalidate aria-labelledby="workout-form-title">
+        <h2 id="workout-form-title">Add a workout</h2>
+        <div class="error-summary" id="workout-errors" role="alert" tabindex="-1" hidden><h3>Please check the following</h3><ul></ul></div>
+        <div class="grid-2">
+          <div class="field" data-field="localDate">
+            <label for="workout-date">Date</label>
+            <input id="workout-date" name="localDate" type="date" class="input" aria-describedby="workout-localDate-error" required>
+            <p class="field-error" id="workout-localDate-error" hidden></p>
+          </div>
+          <div class="field" data-field="durationMin">
+            <label for="workout-duration">Duration <span class="unit">minutes</span></label>
+            <input id="workout-duration" name="durationMin" type="text" inputmode="numeric" autocomplete="off" class="input input--short" aria-describedby="workout-durationMin-error" required>
+            <p class="field-error" id="workout-durationMin-error" hidden></p>
+          </div>
+        </div>
+        <div class="field" data-field="activityId">
+          <label for="workout-activity">Activity type</label>
+          <select id="workout-activity" name="activityId" class="input" aria-describedby="workout-activityId-error" required></select>
+          <p class="field-error" id="workout-activityId-error" hidden></p>
+        </div>
+        <div class="field">
+          <label for="workout-notes">Notes <span class="unit">optional</span></label>
+          <input id="workout-notes" name="notes" type="text" maxlength="200" class="input" autocomplete="off">
+        </div>
+        <div class="field">
+          <label class="checkbox"><input type="checkbox" name="showEstimate" id="workout-estimate" aria-describedby="workout-estimate-hint"> Show estimated active calories</label>
+          <p class="hint" id="workout-estimate-hint">An average for the activity using its MET value and your weight. It is for interest only and is not added to your daily estimate.</p>
+        </div>
+        <div class="form__actions">
+          <button type="submit" class="button button--primary" id="workout-submit">Add workout</button>
+          <button type="button" class="button button--ghost" id="workout-cancel" hidden>Cancel editing</button>
+        </div>
+      </form>
+
+      <h2 class="section-title">History</h2>
+      <div id="workout-list"></div>
+    </section>
+
+    <!-- PROGRESS -->
+    <section id="view-progress" class="view" data-view="progress" aria-labelledby="progress-title" hidden>
+      <h1 id="progress-title" class="view__title" tabindex="-1">Progress</h1>
+      <p class="muted">Body weight moves up and down from day to day with fluid, food and timing. Changes over several weeks tell you more than any single reading.</p>
+
+      <form id="weight-form" class="card form" novalidate aria-labelledby="weight-form-title">
+        <h2 id="weight-form-title">Log your weight</h2>
+        <div class="error-summary" id="weight-errors" role="alert" tabindex="-1" hidden><h3>Please check the following</h3><ul></ul></div>
+        <div class="grid-2">
+          <div class="field" data-field="localDate">
+            <label for="weight-date">Date</label>
+            <input id="weight-date" name="localDate" type="date" class="input" aria-describedby="weight-localDate-error" required>
+            <p class="field-error" id="weight-localDate-error" hidden></p>
+          </div>
+          <div class="field" data-field="weight">
+            <fieldset>
+              <legend>Weight</legend>
+              <div class="units-metric inline-inputs">
+                <label for="log-weightKg" class="visually-hidden">Weight in kilograms</label>
+                <input id="log-weightKg" name="weightKg" type="text" inputmode="decimal" autocomplete="off" class="input input--short" aria-describedby="weight-weight-error">
+                <span class="unit" aria-hidden="true">kg</span>
+              </div>
+              <div class="units-imperial inline-inputs" hidden>
+                <label for="log-weightSt">st</label>
+                <input id="log-weightSt" name="weightSt" type="text" inputmode="numeric" autocomplete="off" class="input input--tiny" aria-describedby="weight-weight-error">
+                <label for="log-weightLb">lb</label>
+                <input id="log-weightLb" name="weightLb" type="text" inputmode="decimal" autocomplete="off" class="input input--tiny" aria-describedby="weight-weight-error">
+              </div>
+            </fieldset>
+            <p class="field-error" id="weight-weight-error" hidden></p>
+          </div>
+        </div>
+        <div class="field">
+          <label for="weight-notes">Notes <span class="unit">optional</span></label>
+          <input id="weight-notes" name="notes" type="text" maxlength="200" class="input" autocomplete="off" placeholder="For example: morning, before breakfast">
+        </div>
+        <div class="field" id="weight-sync-field" hidden>
+          <label class="checkbox"><input type="checkbox" name="updateProfile" id="weight-sync" checked> Also use this as my current weight in the calculator</label>
+        </div>
+        <div class="form__actions">
+          <button type="submit" class="button button--primary" id="weight-submit">Add entry</button>
+          <button type="button" class="button button--ghost" id="weight-cancel" hidden>Cancel editing</button>
+        </div>
+      </form>
+
+      <h2 class="section-title">Weight log</h2>
+      <div id="weight-list"></div>
+    </section>
+
+    <!-- SETTINGS -->
+    <section id="view-settings" class="view" data-view="settings" aria-labelledby="settings-title" hidden>
+      <h1 id="settings-title" class="view__title" tabindex="-1">Settings</h1>
+
+      <div class="card">
+        <h2>Units</h2>
+        <p class="muted">Choose how heights and weights are shown and entered. Values are always stored in metric.</p>
+        <fieldset class="segmented" id="settings-units">
+          <legend class="visually-hidden">Units</legend>
+          <label><input type="radio" name="settings-units" value="metric"> Metric (cm, kg)</label>
+          <label><input type="radio" name="settings-units" value="imperial"> Imperial (ft, st)</label>
+        </fieldset>
+      </div>
+
+      <div class="card">
+        <h2>Your data on this device</h2>
+        <p>LetsGetFit has no accounts yet. Your details, workouts and weight log are saved only in this browser's local storage on this device. Nothing is sent to a server, and there is no analytics or tracking.</p>
+        <ul class="bullets">
+          <li>Clearing your browser data, or using a private window, removes it.</li>
+          <li>It is not shared between browsers or devices.</li>
+          <li>Anyone who uses this browser profile can see it.</li>
+        </ul>
+        <p id="storage-status" class="muted"></p>
+        <dl class="stats" id="data-counts"></dl>
+        <div class="form__actions">
+          <button type="button" class="button" id="export-data">Download a copy (JSON)</button>
+          <button type="button" class="button button--danger" id="clear-data">Clear all data</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>About these estimates</h2>
+        <p>The figures in LetsGetFit are estimates based on population studies. They are not medical advice. Talk to your GP or a registered dietitian about your own needs, especially if you have a health condition.</p>
+        <p><a href="#overview" data-scroll="methods">Read how each estimate is calculated</a></p>
+        <p class="muted">Version <span id="app-version"></span></p>
+      </div>
+    </section>
+  </main>
+
+  <div class="toast-region" id="toast" role="status" aria-live="polite"></div>
+
+  <dialog id="confirm-dialog" class="dialog" aria-labelledby="confirm-title" aria-describedby="confirm-body">
+    <form method="dialog">
+      <h2 id="confirm-title">Are you sure?</h2>
+      <p id="confirm-body"></p>
+      <div class="form__actions">
+        <button value="cancel" class="button button--ghost" autofocus>Cancel</button>
+        <button value="confirm" class="button button--danger" id="confirm-ok">Delete</button>
+      </div>
+    </form>
+  </dialog>
+</body>
+</html>

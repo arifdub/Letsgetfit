@@ -1,0 +1,51 @@
+# LetsGetFit — Apache settings for shared cPanel hosting.
+# Every directive is wrapped in <IfModule> so a host without a module still serves the site.
+
+Options -Indexes
+DirectoryIndex index.html
+ErrorDocument 404 /404.html
+
+# Force HTTPS once a certificate is installed (AutoSSL). Leaves .well-known alone so
+# certificate validation keeps working.
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteCond %{REQUEST_URI} !^/\.well-known/
+  RewriteCond %{HTTPS} !=on
+  RewriteCond %{HTTP:X-Forwarded-Proto} !=https
+  RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+
+  # Block dotfiles and private file types, except .well-known (ACME / AutoSSL).
+  RewriteRule "(^|/)\.(?!well-known/)" - [F]
+  RewriteRule "\.(env|ini|log|sql|sqlite|bak|sh|yml|yaml|md|lock|json\.dist)$" - [F,NC]
+</IfModule>
+
+<IfModule mod_mime.c>
+  AddType text/javascript .js .mjs
+  AddType image/svg+xml .svg
+  AddType application/manifest+json .webmanifest
+  AddCharset utf-8 .html .css .js .svg
+</IfModule>
+
+<IfModule mod_headers.c>
+  Header always set X-Content-Type-Options "nosniff"
+  Header always set Referrer-Policy "strict-origin-when-cross-origin"
+  Header always set X-Frame-Options "DENY"
+  Header always set Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()"
+  Header always set Cross-Origin-Opener-Policy "same-origin"
+  # Phase 1 loads nothing from other origins. Loosen only for a specific, documented need.
+  Header always set Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+  # Uncomment after HTTPS works for the domain and every subdomain you use:
+  # Header always set Strict-Transport-Security "max-age=31536000"
+
+  # Files are not fingerprinted, so ask browsers to revalidate HTML, CSS and JS on each visit.
+  <FilesMatch "\.(html|css|js)$">
+    Header set Cache-Control "no-cache"
+  </FilesMatch>
+  <FilesMatch "\.(svg|png|ico|webp)$">
+    Header set Cache-Control "public, max-age=604800"
+  </FilesMatch>
+</IfModule>
+
+<IfModule mod_deflate.c>
+  AddOutputFilterByType DEFLATE text/html text/css text/javascript application/javascript image/svg+xml application/json
+</IfModule>
