@@ -18,6 +18,8 @@ config/*.php
 # Logs, backups, uploads
 *.log
 *.sql
+# ...but schema migrations are source code
+!server/migrations/*.sql
 *.sql.gz
 *.tar.gz
 /backups/
