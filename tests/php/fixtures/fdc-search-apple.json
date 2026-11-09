@@ -1,0 +1,81 @@
+{
+  "totalHits": 6,
+  "currentPage": 1,
+  "totalPages": 1,
+  "foods": [
+    {
+      "fdcId": 1750340,
+      "description": "Apples, fuji, with skin, raw",
+      "dataType": "Foundation",
+      "foodNutrients": [
+        { "nutrientId": 2048, "nutrientName": "Energy (Atwater Specific Factors)", "nutrientNumber": "958", "unitName": "KCAL", "value": 63 },
+        { "nutrientId": 1003, "nutrientName": "Protein", "nutrientNumber": "203", "unitName": "G", "value": 0.148 },
+        { "nutrientId": 1004, "nutrientName": "Total lipid (fat)", "nutrientNumber": "204", "unitName": "G", "value": 0.162 },
+        { "nutrientId": 1005, "nutrientName": "Carbohydrate, by difference", "nutrientNumber": "205", "unitName": "G", "value": 15.7 },
+        { "nutrientId": 1087, "nutrientName": "Calcium, Ca", "nutrientNumber": "301", "unitName": "MG", "value": 6.6 },
+        { "nutrientId": 1089, "nutrientName": "Iron, Fe", "nutrientNumber": "303", "unitName": "MG", "value": 0.03 },
+        { "nutrientId": 1092, "nutrientName": "Potassium, K", "nutrientNumber": "306", "unitName": "MG", "value": 109 }
+      ]
+    },
+    {
+      "fdcId": 171688,
+      "description": "Apples, raw, with skin (Includes foods for USDA's Food Distribution Program)",
+      "dataType": "SR Legacy",
+      "foodNutrients": [
+        { "nutrientId": 1008, "nutrientName": "Energy", "nutrientNumber": "208", "unitName": "KCAL", "value": 52 },
+        { "nutrientId": 1062, "nutrientName": "Energy", "nutrientNumber": "268", "unitName": "kJ", "value": 218 },
+        { "nutrientId": 1003, "nutrientName": "Protein", "nutrientNumber": "203", "unitName": "G", "value": 0.26 },
+        { "nutrientId": 1004, "nutrientName": "Total lipid (fat)", "nutrientNumber": "204", "unitName": "G", "value": 0.17 },
+        { "nutrientId": 1005, "nutrientName": "Carbohydrate, by difference", "nutrientNumber": "205", "unitName": "G", "value": 13.81 },
+        { "nutrientId": 1079, "nutrientName": "Fiber, total dietary", "nutrientNumber": "291", "unitName": "G", "value": 2.4 },
+        { "nutrientId": 1087, "nutrientName": "Calcium, Ca", "nutrientNumber": "301", "unitName": "MG", "value": 6 },
+        { "nutrientId": 1089, "nutrientName": "Iron, Fe", "nutrientNumber": "303", "unitName": "MG", "value": 0.12 },
+        { "nutrientId": 1092, "nutrientName": "Potassium, K", "nutrientNumber": "306", "unitName": "MG", "value": 107 },
+        { "nutrientId": 1114, "nutrientName": "Vitamin D (D2 + D3)", "nutrientNumber": "328", "unitName": "UG", "value": 0 },
+        { "nutrientId": 1178, "nutrientName": "Vitamin B-12", "nutrientNumber": "418", "unitName": "UG", "value": 0 }
+      ]
+    },
+    {
+      "fdcId": 2345678,
+      "description": "CLOUDY APPLE JUICE",
+      "dataType": "Branded",
+      "brandOwner": "Example Orchards Ltd",
+      "servingSize": 250,
+      "servingSizeUnit": "ml",
+      "householdServingFullText": "1 glass",
+      "foodNutrients": [
+        { "nutrientId": 1008, "nutrientName": "Energy", "unitName": "KCAL", "value": 46 },
+        { "nutrientId": 1003, "nutrientName": "Protein", "unitName": "G", "value": 0 },
+        { "nutrientId": 1004, "nutrientName": "Total lipid (fat)", "unitName": "G", "value": 0 },
+        { "nutrientId": 1005, "nutrientName": "Carbohydrate, by difference", "unitName": "G", "value": 11.2 },
+        { "nutrientId": 1110, "nutrientName": "Vitamin D (D2 + D3), International Units", "unitName": "IU", "value": 40 }
+      ]
+    },
+    {
+      "fdcId": 171688,
+      "description": "Apples, raw, with skin (Includes foods for USDA's Food Distribution Program)",
+      "dataType": "SR Legacy",
+      "foodNutrients": [
+        { "nutrientId": 1008, "nutrientNumber": "208", "unitName": "KCAL", "value": 52 }
+      ]
+    },
+    {
+      "fdcId": 9999999,
+      "description": "Apple flavour, no nutrient data",
+      "dataType": "Branded",
+      "foodNutrients": []
+    },
+    {
+      "fdcId": 3456789,
+      "description": "Apple and chicken bake, baked",
+      "dataType": "Survey (FNDDS)",
+      "foodNutrients": [
+        { "nutrientNumber": "208", "unitName": "KCAL", "value": 140 },
+        { "nutrientNumber": "203", "unitName": "G", "value": 12.5 },
+        { "nutrientNumber": "306", "unitName": "G", "value": 0.25 },
+        { "nutrientNumber": "204", "unitName": "G", "value": -3 },
+        { "nutrientNumber": "205", "unitName": "G", "value": 250 }
+      ]
+    }
+  ]
+}

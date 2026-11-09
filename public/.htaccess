@@ -17,6 +17,8 @@ ErrorDocument 404 /404.html
   # Block dotfiles and private file types, except .well-known (ACME / AutoSSL).
   RewriteRule "(^|/)\.(?!well-known/)" - [F]
   RewriteRule "\.(env|ini|log|sql|sqlite|bak|sh|yml|yaml|md|lock|json\.dist)$" - [F,NC]
+  # Shared PHP include files are not entry points.
+  RewriteRule "\.inc\.php$" - [F,NC]
 </IfModule>
 
 <IfModule mod_mime.c>
@@ -38,6 +40,9 @@ ErrorDocument 404 /404.html
   # Header always set Strict-Transport-Security "max-age=31536000"
 
   # Files are not fingerprinted, so ask browsers to revalidate HTML, CSS and JS on each visit.
+  <FilesMatch "\.php$">
+    Header set Cache-Control "no-store"
+  </FilesMatch>
   <FilesMatch "\.(html|css|js)$">
     Header set Cache-Control "no-cache"
   </FilesMatch>
