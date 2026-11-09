@@ -21,7 +21,8 @@ const freePort = () =>
 
 async function phpServer(args, env) {
   const port = await freePort();
-  const proc = spawn('php', ['-S', `127.0.0.1:${port}`, ...args], { env: { ...process.env, ...env }, stdio: 'ignore' });
+  // Several workers, so a deliberately slow mock request cannot block the next test's request.
+  const proc = spawn('php', ['-S', `127.0.0.1:${port}`, ...args], { env: { ...process.env, PHP_CLI_SERVER_WORKERS: '4', ...env }, stdio: 'ignore' });
   for (let i = 0; i < 50; i += 1) {
     try {
       await fetch(`http://127.0.0.1:${port}/`);
