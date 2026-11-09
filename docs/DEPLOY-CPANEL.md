@@ -35,7 +35,9 @@ No PHP, database or secrets are needed for Phase 1.
 - **FoodData Central API key:** free from <https://fdc.nal.usda.gov/api-key-signup>. It goes only in the private config file, never in the repository.
 - **Cache directory** outside the web root, for example `~/letsgetfit-data/cache`.
 
-### Phase 4: accounts and sync (planned)
+### Phase 4: accounts and sync (built, switched off)
+
+Full steps: **[docs/DATABASE.md](DATABASE.md)**. Privacy launch checklist: **[docs/PRIVACY.md](PRIVACY.md)**. Summary:
 
 - **MySQL Databases** or **Database Wizard:** one database and one dedicated user with only the privileges the app needs on that database.
 - **PDO MySQL** extension (`pdo_mysql`) enabled for the chosen PHP version.

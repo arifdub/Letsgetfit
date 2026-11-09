@@ -37,7 +37,10 @@ server/                 PHP 8.3 code, deployed OUTSIDE the web root as letsgetfi
   src/FoodSearchController.php, RateLimiter.php, FileCache.php, Api.php, Http/*
 config/app.example.php  Template with placeholders; the deploy writes the real file from secrets
 tests/php, tests/api    PHP unit tests (no Composer) and php -S integration tests with a mock FDC
-migrations/             SQL migrations, outside the web root (Phase 4, planned)
+server/migrations/      SQL migrations (Phase 4), applied by hand with server/bin/migrate.php or phpMyAdmin
+server/src/Accounts, Auth, Db, Mail   accounts, sessions/CSRF, tokens, PDO, PHPMailer/outbox
+server/composer.json    PHPMailer; vendor/ is built in CI and uploaded (Composer not needed on the host)
+public/api/account.php  thin entry point for accounts and sync
 ```
 
 No Composer dependencies are needed yet. Everything uses PHP's standard library and the curl extension, so nothing has to be installed on the host.
@@ -59,6 +62,11 @@ No Composer dependencies are needed yet. Everything uses PHP's standard library 
 | Exercise content and routines are static modules (`lib/exercises.js`) | Reviewable in one place, tested for integrity, and no server needed. |
 | Chart colours: series 1 blue (#2a78d6 light, #3987e5 dark) for the 7-day line and series 2 orange (#eb6834, #d95926) for readings | Validated with the dataviz palette checker on both app surfaces (lightness, chroma, colour-blind separation, contrast). Line and dot shapes add a second cue beyond colour. A table view is always available. |
 | CSV with a formula-injection guard | Exports open safely in spreadsheet apps. |
+| Accounts optional, shipped OFF | Health data is never collected server-side until the privacy launch checklist is signed off. A disabled feature answers `{"enabled":false}` and the UI hides it. |
+| Sync = per-record last-write-wins with tombstones; opt-in per device with a preview | Stable UUIDs from Phase 1 make merging safe. Content keys catch the same entry saved on two devices. Logging out unlinks the device, so one person's data can never sync into another's account. |
+| Composite pull cursor (server time, collection, ID) | Paging never skips records written in the same millisecond. |
+| PHP sessions (files in private storage) + `session_version` | No extra infrastructure on shared hosting. A password reset logs out everywhere. |
+| Settings written with `var_export` by `scripts/write-config.php` | Secrets with quotes cannot break or inject into the PHP settings file. |
 | Units preference kept apart from the profile | Changing display units never changes stored values. |
 | Logged workouts are not added to maintenance | The activity level already includes usual exercise. Adding workouts again would double-count. |
 | Maintenance only; no loss or gain targets | Targets need separately reviewed eligibility rules and safeguards (see `docs/STATUS.md`). |

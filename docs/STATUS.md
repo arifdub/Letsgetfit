@@ -5,8 +5,8 @@
 | 1 | Calculator and local tracking (static) | **Complete**: implemented and tested. Automatic FTPS deploy to cPanel is configured; the first live deploy depends on the server setup in docs/DEPLOY-CPANEL.md. |
 | 2 | Food diary and nutrient data (manual diary, PHP FoodData Central adapter, Open Food Facts evaluation) | **Complete**: implemented and tested; deployed by the FTPS workflow. Barcode lookup is deferred (see docs/FOOD-DATA.md). |
 | 3 | Workouts library, routines and progress trends | **Complete**: implemented and tested; deployed by the FTPS workflow. |
-| 4 | Optional accounts and cloud sync | Not started. Next. |
-| 5 | AI meal scan | Not started |
+| 4 | Optional accounts and cloud sync | **Built and tested; switched OFF in production** until the database, email and EU privacy review are done (docs/PRIVACY.md §3). |
+| 5 | AI meal scan | Not started. Next. |
 
 ## Phase 1 acceptance
 
@@ -66,20 +66,39 @@
 | Exercise calorie estimates separate and labelled | Unit: session estimate is optional, 3.5 MET net. e2e: "About 115 kcal active energy (estimate, not added…)" and maintenance unchanged |
 | Older data readable | Unit and e2e: v1 to v3 and v2 to v3 migrations keep workouts, weights, diary and foods |
 
-## Phase 4 plan (summary)
+## Phase 4 acceptance
 
-Optional accounts (anonymous use stays), with these pieces:
+| Criterion | How it is verified |
+|---|---|
+| Anonymous use stays available | The account card only appears when the server reports accounts are enabled (e2e smoke: hidden on static or disabled). Disabled accounts answer `{"enabled":false}` with no error. |
+| Accounts, email verification, password reset | API tests (`tests/api/accounts.test.mjs`, real PHP + MariaDB) cover register, single-use confirmation link, login only after confirming, and reset. Browser tests (`tests/e2e/accounts.mjs`) cover the full flow with emailed links. |
+| Maintained primitives and libraries | `password_hash` with Argon2id, `random_bytes` tokens stored as SHA-256, PHP sessions, and PHPMailer (Composer, built in CI) for SMTP |
+| Secure session cookies, CSRF, rate limits, safe recovery | Tests cover HttpOnly and SameSite=Lax cookies, a new session ID at login, CSRF/JSON/Origin checks (403 and 415), login rate limit (429 + Retry-After), and generic responses for login, sign-up and reset (no account enumeration). A reset logs out every device. |
+| Ownership enforced on every read and write | Test "two users can never read or change each other's records": same record ID, pulls, deletions, exports, a client-supplied user ID ignored, and 401 when logged out |
+| Opt-in migration with preview and duplicate protection | Unit `sync.test.mjs` (preview: upload, download, already there, conflicts, likely duplicates). Browser test: the second device skips a duplicate weight and receives the account's workout. |
+| Sync including deletions | Unit (last write wins, tombstones, newer local edits kept); API (cursor paging including 300 same-millisecond records); browser (a deletion on device 2 reaches device 1) |
+| Account export and deletion | API and browser tests: export JSON (no hashes); deletion needs the password, removes the user, records and tokens, and leaves device data untouched |
+| Migrations, backup and restore documented | `server/migrations/*.sql`, `bin/migrate.php` (tested: applies once, status, CLI only), `docs/DATABASE.md` |
+| Privacy documentation before collecting health data | `docs/PRIVACY.md` (inventory, purposes, lawful bases, retention, processors, access controls, launch checklist including the EU review and DPIA) and `docs/PRIVACY-NOTICE-ACCOUNTS-DRAFT.md` |
+| Private data kept out of logs and errors | Error logs record exception class only; the cleanup script prints counts only (tested); deploy never prints secrets (tested) |
+| SMTP and recovery tested in staging | Automated tests use a private outbox. Real SMTP delivery is a manual staging check (`docs/DATABASE.md` §7) and is **not done yet**. |
 
-- email verification and password reset;
-- secure session cookies, CSRF protection and rate limits;
-- server-side ownership checks on every record, with a test that two users cannot read each other's data;
-- opt-in migration of local logs, with a preview and duplicate protection (records already have stable UUIDs);
-- account export and deletion;
-- MySQL migrations, with backup and restore procedures.
+### What is needed to switch accounts on
 
-**Before any health data is stored server-side:** complete the data inventory, retention rules, processor list, privacy policy and EU privacy review.
+1. Database and user created on the host (`docs/DATABASE.md` §1), plus `DB_*` secrets.
+2. An SMTP mailbox or provider, plus `SMTP_*` and `MAIL_FROM` secrets, and SPF, DKIM and DMARC DNS records.
+3. The privacy launch checklist and EU review (`docs/PRIVACY.md` §3), with the accounts privacy notice published.
+4. Migrations run by hand, a staging email test, then the `ACCOUNTS_ENABLED` variable set to `true`.
 
-**Decisions needed from you before Phase 4:**
-- Database details from the host (MySQL or MariaDB version, and whether you can create a dedicated user).
-- An SMTP provider for verification and reset emails.
-- Who will carry out the EU privacy review.
+## Phase 5 plan (summary)
+
+AI meal scan:
+
+- photo picker and camera, with consent before upload;
+- server-side checks of file type and size, metadata stripped, per-user quotas and rate limits, temporary images deleted;
+- AI credentials kept on the server, with timeouts and cost controls;
+- the model suggests foods and portion ranges, which are matched to the Phase 2 food database and shown as editable ingredients and grams, with follow-up questions about oils and sauces;
+- nutrients calculated only from confirmed database entries;
+- manual entry always available.
+
+**Decision needed:** which AI vision provider (and model) to use, given cost, EU data handling and terms. Provider mocks will be used in CI.

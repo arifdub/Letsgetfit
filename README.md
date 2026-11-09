@@ -10,9 +10,9 @@ All figures are presented as estimates. The app does not give medical advice or 
 |---|---|---|
 | 1 | Calculator and local tracking: static, no backend | ✅ Complete, live |
 | 2 | Food diary and nutrient data (PHP food search) | ✅ Complete, live |
-| 3 | Exercise library, routines, progress trends | ✅ Complete |
-| 4 | Optional accounts and sync | Next |
-| 5 | AI meal scan | Planned |
+| 3 | Exercise library, routines, progress trends | ✅ Complete, live |
+| 4 | Optional accounts and sync | ✅ Built and tested · switched off until launch checklist is done |
+| 5 | AI meal scan | Next |
 
 Details and acceptance checks: [docs/STATUS.md](docs/STATUS.md).
 
@@ -56,6 +56,21 @@ Everything is stored in the browser's `localStorage`. Nothing is sent to a serve
 
 Calorie estimates for sessions stay optional, labelled and separate from daily energy.
 
+## What Phase 4 adds (switched off in production)
+
+- **Optional accounts:**
+  - sign up with explicit consent for health data, then confirm by email link;
+  - log in, log out and reset your password by email link. A reset logs out every device.
+- **Sync, opt-in for each device:**
+  - a preview shows what will be copied each way;
+  - likely duplicates are skipped, the newer change wins, and deletions sync.
+- **Account controls:** download all account data, and delete the account with your password.
+- **Security:**
+  - Argon2id password hashes, hashed single-use tokens, and hardened session cookies;
+  - CSRF and origin checks, rate limits, and no way to tell whether an email has an account;
+  - every record is scoped to the logged-in user.
+- **Operations:** MySQL or MariaDB migrations, run by hand, plus a cleanup script. Backup and restore are in [docs/DATABASE.md](docs/DATABASE.md); privacy and the launch checklist are in [docs/PRIVACY.md](docs/PRIVACY.md).
+
 ## Run it locally
 
 Requirements: Node.js 20 or newer (only for the local server and tests; the app itself has no build step).
@@ -81,7 +96,8 @@ LETSGETFIT_PRIVATE_DIR=/tmp/lgf-private php -S 127.0.0.1:8080 -t public
 npm run test:unit          # formulas, conversions, validation, storage, food diary (node:test)
 npm run check:static       # public/ is a complete, safe static release
 npm run test:php           # PHP lint + unit tests (needs PHP 8.3+ with curl, mbstring)
-npm run test:api           # PHP API against a mock FoodData Central (php -S)
+npm run test:api           # PHP API: mock FoodData Central, and accounts on MariaDB (php -S)
+npm run test:e2e:accounts  # account browser tests (php -S + MariaDB); skipped without a database
 npm run test:deploy        # scripts/deploy.sh against temporary directories
 npx playwright install chromium   # once, if Chromium is not already installed
 npm run test:e2e           # browser smoke tests: forms, persistence, keyboard, mobile layout
@@ -94,7 +110,7 @@ GitHub Actions runs all of these on every push and pull request (`.github/workfl
 
 ```
 public/            Web root: deployable files and thin PHP entry points (api/)
-server/            PHP code for the API, deployed OUTSIDE the web root
+server/            PHP code for the API, deployed OUTSIDE the web root (src/, migrations/, bin/, composer.json)
   assets/js/lib/       Pure calculation and validation logic (unit-tested)
   assets/js/storage/   Versioned browser storage
   assets/js/ui/        Views and DOM helpers
@@ -123,7 +139,8 @@ Each service, and how to run without production credentials:
 |---|---|---|
 | USDA FoodData Central API | 2 (live) | Food search. Optional `FDC_API_KEY` secret; without it the public DEMO_KEY is used. Tests use a mock server and fixtures. |
 | Open Food Facts | Evaluated, not adopted | Irish and EU branded products and barcodes (see docs/FOOD-DATA.md) |
-| SMTP / email provider | 4 | Account verification and password reset |
+| MySQL / MariaDB | 4 (off) | Accounts and sync. Tests use a throwaway database (`LGF_TEST_DB_*` variables); CI uses a MariaDB service. |
+| SMTP / email provider | 4 (off) | Confirmation and reset emails. Development and tests use a private outbox (`mail_transport: outbox`). |
 | AI vision provider | 5 | Meal photo suggestions |
 
 ## Sources and limits

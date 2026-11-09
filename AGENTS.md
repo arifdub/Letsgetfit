@@ -20,6 +20,13 @@ Guidance for anyone, human or AI, changing this repository.
 - Changing the storage shape means bumping `SCHEMA_VERSION` and adding a migration plus a test. Never drop user data.
 - Show only working features in the primary navigation.
 
+## Accounts and server data
+
+- Accounts must stay optional, and switched off until the launch checklist in `docs/PRIVACY.md` is signed off. Never collect health data on the server otherwise.
+- Every query on user data must be scoped by the user ID from the session, never from the request. Add a test for any new endpoint.
+- Never log personal data, search text, tokens or secrets, and never put them in error responses.
+- Schema changes go in a new numbered file in `server/migrations/` that ends by recording itself. They are never run automatically.
+
 ## Health content
 
 - Verify formulas against primary sources and record the equation, units, population, assumptions, limits and source in `docs/FORMULAS.md`, `ui/methods.js` and the tests.
