@@ -13,8 +13,10 @@
 #                  restricted to the document root itself
 # Optional:
 #   FTP_PORT         default 21
-#   FTP_VERIFY_CERT  "true" (default) or "false" — only for hosts whose FTPS certificate
-#                    does not match FTP_SERVER; see docs/DEPLOY-CPANEL.md
+#   FTP_CERT_FINGERPRINT  SHA-1 fingerprint (AA:BB:...) of the FTP server's certificate.
+#                    Trusts exactly that certificate even if it is self-signed, which is
+#                    common for cPanel FTP. Safer than turning verification off.
+#   FTP_VERIFY_CERT  "true" (default) or "false" — last resort only; see docs/DEPLOY-CPANEL.md
 #   DEPLOY_SOURCE    folder to upload, default <repo>/public
 #   DRY_RUN          "true" to list what would be uploaded without changing anything
 #
@@ -78,6 +80,15 @@ esac
 
 [[ "$FTP_USERNAME" != *$'\n'* && "$FTP_USERNAME" != *'"'* ]] || fail "FTP_USERNAME contains characters that are not allowed."
 
+pin_cmd=""
+if [ -n "${FTP_CERT_FINGERPRINT:-}" ]; then
+  fingerprint="$(printf '%s' "$FTP_CERT_FINGERPRINT" | tr '[:lower:]' '[:upper:]' | tr -d '[:space:]')"
+  [[ "$fingerprint" =~ ^([0-9A-F]{2}:){19}[0-9A-F]{2}$ ]] || fail "FTP_CERT_FINGERPRINT must be a SHA-1 fingerprint like 5A:56:...:5F (20 pairs)."
+  # lftp: trust this one certificate (by fingerprint) while still verifying everything else.
+  pin_cmd="set ssl:verify-certificate/$fingerprint no"
+  info "trusting the pinned FTP certificate $fingerprint."
+fi
+
 dry=""
 index_cmd="put \"$SOURCE/index.html\" -o index.html"
 if [ "${DRY_RUN:-false}" = "true" ]; then
@@ -109,6 +120,7 @@ set ftp:ssl-force yes
 set ftp:ssl-protect-data yes
 set ftp:ssl-protect-list yes
 set ssl:verify-certificate $verify
+$pin_cmd
 set ftp:passive-mode yes
 set xfer:clobber yes
 open --env-password -u "$FTP_USERNAME" -p $port "ftp://$host"
@@ -121,6 +133,6 @@ LFTP
 unset LFTP_PASSWORD
 
 if [ "$lftp_status" -ne 0 ]; then
-  fail "the upload stopped (lftp exit $lftp_status). Check the messages above. If it says the marker file is missing, create $MARKER in the letsgetfit.site document root and check FTP_DIRECTORY points at that folder."
+  fail "the upload stopped (lftp exit $lftp_status). Check the messages above. If it says the marker file is missing, create $MARKER in the letsgetfit.site document root and check FTP_DIRECTORY points at that folder. If it says the certificate is not trusted, see 'Certificate errors' in docs/DEPLOY-CPANEL.md."
 fi
 info "done."

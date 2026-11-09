@@ -55,10 +55,14 @@ async function startFtp({ tls = true } = {}) {
     });
     proc.on('exit', (code) => reject(new Error(`FTP server exited ${code}`)));
   });
+  const fingerprint = tls
+    ? spawnSync('openssl', ['x509', '-in', cert, '-noout', '-fingerprint', '-sha1'], { encoding: 'utf8' }).stdout.trim().split('=')[1]
+    : null;
   return {
     base,
     docroot,
     port,
+    fingerprint,
     stop() {
       proc.kill();
       rmSync(base, { recursive: true, force: true });
@@ -164,4 +168,29 @@ test('verifies the certificate by default (self-signed is rejected)', { skip }, 
   const r = await deploy(creds(ftp.port, { FTP_VERIFY_CERT: '' }));
   assert.notEqual(r.status, 0);
   assert.ok(!existsSync(path.join(ftp.docroot, 'index.html')));
+});
+
+test('a pinned certificate fingerprint is trusted while verification stays on', { skip }, async (t) => {
+  const ftp = await startFtp();
+  t.after(() => ftp.stop());
+  writeFileSync(path.join(ftp.docroot, '.letsgetfit-docroot'), '');
+  const r = await deploy(creds(ftp.port, { FTP_VERIFY_CERT: '', FTP_CERT_FINGERPRINT: ftp.fingerprint.toLowerCase() }));
+  assert.equal(r.status, 0, r.stderr + r.stdout);
+  assert.ok(existsSync(path.join(ftp.docroot, 'index.html')));
+});
+
+test('a different pinned fingerprint is rejected', { skip }, async (t) => {
+  const ftp = await startFtp();
+  t.after(() => ftp.stop());
+  writeFileSync(path.join(ftp.docroot, '.letsgetfit-docroot'), '');
+  const wrong = ftp.fingerprint.startsWith('00') ? `11${ftp.fingerprint.slice(2)}` : `00${ftp.fingerprint.slice(2)}`;
+  const r = await deploy(creds(ftp.port, { FTP_VERIFY_CERT: '', FTP_CERT_FINGERPRINT: wrong }));
+  assert.notEqual(r.status, 0);
+  assert.ok(!existsSync(path.join(ftp.docroot, 'index.html')));
+});
+
+test('a malformed fingerprint is refused before connecting', async () => {
+  const r = await deploy({ FTP_SERVER: 'ftp.example.invalid', FTP_USERNAME: 'u', FTP_PASSWORD: 'p', FTP_DIRECTORY: 'site', FTP_CERT_FINGERPRINT: 'not-a-fingerprint' });
+  assert.notEqual(r.status, 0);
+  assert.match(r.stderr, /SHA-1 fingerprint/);
 });

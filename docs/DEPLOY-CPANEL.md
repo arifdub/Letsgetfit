@@ -90,7 +90,8 @@ If a secret is missing or misnamed, the run stops with `missing setting(s): …`
 | Variable | Default | Use |
 |---|---|---|
 | `FTP_PORT` | `21` | Only if your host uses another port for explicit FTPS |
-| `FTP_VERIFY_CERT` | `true` | Set to `false` only if the deploy fails with a certificate error and you cannot use a host name the certificate covers. The connection stays encrypted, but the server's identity is not checked. |
+| `FTP_CERT_FINGERPRINT` | `5A:56:57:A6:A1:AD:1B:04:39:30:8C:5B:1C:49:B7:98:1A:EB:55:5F` (set in the workflow) | The SHA-1 fingerprint of the FTP server's certificate. The deploy trusts exactly this certificate, even though it is self-signed, and rejects any other. See [Certificate errors](#certificate-errors). |
+| `FTP_VERIFY_CERT` | `true` | Last resort only. `false` turns off identity checks entirely. Prefer `FTP_CERT_FINGERPRINT`. |
 | `SITE_URL` | `https://letsgetfit.site/` | The address the live check visits |
 
 ### Choosing FTP_DIR
@@ -120,11 +121,22 @@ FTP paths are relative to where the FTP account lands when it logs in:
 |---|---|
 | `missing setting(s): …` | Add or rename the listed secrets exactly as above. |
 | `Login incorrect` / `530` | Check `FTP_USERNAME` (cPanel FTP accounts include `@domain`) and `FTP_PASSWORD`. |
-| Certificate or `verify` errors | Set `FTP_SERVER` to the server host name the certificate covers. As a last resort, set the variable `FTP_VERIFY_CERT=false`. |
+| `Certificate verification: The certificate is NOT trusted` | See [Certificate errors](#certificate-errors). |
 | `marker file is missing` or `No such file` | Create `.letsgetfit-docroot` in the document root and check `FTP_DIRECTORY` points to that folder. |
 | Connection timed out | The host may block FTP from GitHub's IP ranges or need FTPS turned on. Ask your host, or use the cPanel Git method below. |
 
 Because uploads never delete, a file removed from `public/` in a later release stays on the server until you delete it in File Manager.
+
+### Certificate errors
+
+cPanel's FTP service often uses a self-signed certificate. That is separate from the website's HTTPS certificate, so it cannot be verified in the usual way. This host's FTP certificate had SHA-1 fingerprint `5A:56:57:A6:A1:AD:1B:04:39:30:8C:5B:1C:49:B7:98:1A:EB:55:5F` on 9 November 2026. The workflow pins it: it trusts exactly that certificate, and any other stops the deploy.
+
+If your host renews or replaces the certificate, the deploy fails with `The certificate is NOT trusted` and prints the new fingerprint in brackets. Before trusting it:
+
+1. Confirm it really is your host's certificate. In cPanel → **SSL/TLS Status**, or **SSL/TLS → Manage SSL sites / service certificates** (names vary), compare the FTP service certificate's SHA-1 fingerprint. Or ask your host.
+2. Then add or update the repository **variable** `FTP_CERT_FINGERPRINT` with the new value, and run the deploy again.
+
+Better long-term options are to point `FTP_SERVER` at a host name with a properly signed certificate (often the server's own host name), or to ask your host to install a valid certificate on the FTP service.
 
 ---
 
