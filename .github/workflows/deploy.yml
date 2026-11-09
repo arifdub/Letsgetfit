@@ -60,7 +60,12 @@ jobs:
         with:
           php-version: '8.3'
           extensions: curl, json, mbstring
+          tools: composer:v2
           coverage: none
+
+      # Composer may not exist on the host, so packages are built here and uploaded.
+      - name: Composer packages for the server (PHPMailer)
+        run: composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader --working-dir=server
 
       - name: Quick checks before upload
         run: |
@@ -89,6 +94,20 @@ jobs:
           # Food search: written to the private settings file outside the web root.
           FDC_API_KEY: ${{ secrets.FDC_API_KEY }}
           APP_HASH_SECRET: ${{ secrets.APP_HASH_SECRET }}
+          # Optional accounts (Phase 4): OFF unless the ACCOUNTS_ENABLED variable is 'true' and
+          # every database and email secret below is set. See docs/DATABASE.md and docs/PRIVACY.md.
+          ACCOUNTS_ENABLED: ${{ vars.ACCOUNTS_ENABLED }}
+          DB_HOST: ${{ secrets.DB_HOST }}
+          DB_PORT: ${{ secrets.DB_PORT }}
+          DB_NAME: ${{ secrets.DB_NAME }}
+          DB_USER: ${{ secrets.DB_USER }}
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_SECURE: ${{ secrets.SMTP_SECURE }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          MAIL_FROM: ${{ secrets.MAIL_FROM }}
           # Used to prove which FTP folder is the live site's document root.
           SITE_URL: ${{ vars.SITE_URL || 'https://letsgetfit.site/' }}
         run: bash scripts/deploy-ftp.sh
@@ -109,7 +128,11 @@ jobs:
           echo "Server health: $health"
           if ! grep -q '"ok":true' <<<"$health"; then
             echo "::warning::$SITE_URL/api/health.php did not answer OK. Food search will be unavailable (manual entry still works). See 'Server code for food search' in docs/DEPLOY-CPANEL.md."
-          elif grep -q '"foodSearch":"demo-key"' <<<"$health"; then
+          fi
+          if grep -q '"accounts":"enabled"' <<<"$health"; then
+            echo "::notice::Accounts are switched ON. Make sure migrations have been run (docs/DATABASE.md)."
+          fi
+          if grep -q '"foodSearch":"demo-key"' <<<"$health"; then
             echo "::warning::Food search is using the public DEMO_KEY. Add an FDC_API_KEY repository secret for normal use."
           fi
           # One real search proves PHP can reach FoodData Central over HTTPS (results are cached).

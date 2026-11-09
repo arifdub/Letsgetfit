@@ -22,6 +22,8 @@
 #   SITE_URL         live address, default https://letsgetfit.site/ (used to prove the folder)
 #   FDC_API_KEY      USDA FoodData Central key, written to the private settings file
 #   APP_HASH_SECRET  optional secret for hashing visitor IPs in rate limits (random if unset)
+#   ACCOUNTS_ENABLED "true" to switch on optional accounts, with DB_* , SMTP_* and MAIL_FROM
+#                    (see scripts/write-config.php and docs/DATABASE.md). Off by default.
 #
 # Safety rules (same as scripts/deploy.sh):
 #   - Always encrypted (explicit FTPS). Plain FTP is refused, so the password never travels
@@ -90,6 +92,15 @@ if [ -n "${FDC_API_KEY:-}" ] && ! [[ "$FDC_API_KEY" =~ ^[A-Za-z0-9]{8,128}$ ]]; 
 fi
 if [ -n "${APP_HASH_SECRET:-}" ] && ! [[ "$APP_HASH_SECRET" =~ ^[A-Za-z0-9_-]{16,256}$ ]]; then
   fail "APP_HASH_SECRET must be 16+ letters, numbers, - or _."
+fi
+command -v php >/dev/null 2>&1 || fail "php is needed to build the server settings file."
+if [ "${ACCOUNTS_ENABLED:-}" = "true" ]; then
+  # Fail before uploading anything if the accounts configuration is incomplete.
+  SITE_URL="${SITE_URL:-https://letsgetfit.site/}" php "$REPO_ROOT/scripts/write-config.php" >/dev/null || fail "accounts are switched on but not fully configured."
+  info "accounts will be switched on (ACCOUNTS_ENABLED=true). Run database migrations by hand before people use them: see docs/DATABASE.md."
+fi
+if [ -d "$REPO_ROOT/server" ] && [ ! -f "$REPO_ROOT/server/vendor/autoload.php" ]; then
+  echo "::warning::server/vendor is missing (run composer install --no-dev in server/). Email sending for accounts needs it."
 fi
 
 pin_cmd=""
@@ -260,35 +271,25 @@ deploy_private() {
   fi
 
   run_lftp "cd \"$target\"" "cd .." "mkdir -p -f $private_root/app $private_root/config" \
-    "mirror --reverse --no-perms --parallel=2 --verbose=1 --exclude-glob .git/ \"$SERVER_SOURCE\" $private_root/app" \
+    "mirror --reverse --no-perms --parallel=4 --verbose=1 --exclude-glob .git/ --exclude-glob '*.md' --exclude-glob 'vendor/*/*/language/' --exclude-glob 'vendor/*/*/docs/' \"$SERVER_SOURCE\" $private_root/app" \
     || fail "could not upload the server code to $private_root/app."
   info "server code uploaded to $private_root/app (outside the web root)."
 
-  key="${FDC_API_KEY:-}"
-  if [ -n "$key" ]; then
-    [[ "$key" =~ ^[A-Za-z0-9]{8,128}$ ]] || fail "FDC_API_KEY must be letters and numbers only."
+  if [ -n "${FDC_API_KEY:-}" ] || [ "${ACCOUNTS_ENABLED:-}" = "true" ]; then
+    :
   elif run_lftp "cd \"$target\"" "cd .." "cls -1 $private_root/config/app.php" >/dev/null 2>&1; then
-    info "kept the existing server settings (no FDC_API_KEY secret set)."
+    info "kept the existing server settings (no FDC_API_KEY or ACCOUNTS_ENABLED secret set)."
     return 0
   else
     echo "::warning::No FDC_API_KEY secret is set, so food search uses the public DEMO_KEY, which allows only a few searches per hour. Get a free key at https://fdc.nal.usda.gov/api-key-signup and add it as the FDC_API_KEY repository secret."
   fi
-  secret="${APP_HASH_SECRET:-}"
-  if [ -z "$secret" ]; then
-    secret="$(od -An -tx1 -N32 /dev/urandom | tr -d ' \n')"
-  fi
-  [[ "$secret" =~ ^[A-Za-z0-9_-]{16,256}$ ]] || fail "APP_HASH_SECRET must be 16+ letters, numbers, - or _."
   cfg="$(mktemp)"
   chmod 600 "$cfg"
-  {
-    echo "<?php"
-    echo "// Written by the deploy workflow on $(date -u +%Y-%m-%dT%H:%M:%SZ). Do not commit."
-    echo "return ["
-    echo "    'fdc_api_key' => '$key',"
-    echo "    'hash_secret' => '$secret',"
-    echo "];"
-  } > "$cfg"
-  run_lftp "cd \"$target\"" "cd .." "put \"$cfg\" -o $private_root/config/app.php" >/dev/null || { rm -f "$cfg"; fail "could not upload the server settings."; }
+  SITE_URL="$SITE_URL" php "$REPO_ROOT/scripts/write-config.php" > "$cfg" || { rm -f "$cfg"; fail "could not build the server settings (see the message above)."; }
+  php -l "$cfg" >/dev/null || { rm -f "$cfg"; fail "the generated settings file is not valid PHP."; }
+  run_lftp "cd \"$target\"" "cd .." "put \"$cfg\" -o $private_root/config/app.php" "chmod 600 $private_root/config/app.php" >/dev/null 2>&1 \
+    || run_lftp "cd \"$target\"" "cd .." "put \"$cfg\" -o $private_root/config/app.php" >/dev/null \
+    || { rm -f "$cfg"; fail "could not upload the server settings."; }
   rm -f "$cfg"
   info "server settings written to $private_root/config/app.php (outside the web root)."
 }

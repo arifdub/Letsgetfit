@@ -15,7 +15,24 @@ jobs:
   test:
     name: Tests and static release
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
+    services:
+      mariadb:
+        image: mariadb:10.11
+        env:
+          MARIADB_ROOT_PASSWORD: ci-root-only
+          MARIADB_USER: lgf_test
+          MARIADB_PASSWORD: lgf_test_pw
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s --health-timeout=5s --health-retries=20
+    env:
+      LGF_TEST_DB_HOST: 127.0.0.1
+      LGF_TEST_DB_PORT: '3306'
+      LGF_TEST_DB_USER: lgf_test
+      LGF_TEST_DB_PASSWORD: lgf_test_pw
     steps:
       - uses: actions/checkout@v4
 
@@ -48,13 +65,22 @@ jobs:
       - uses: shivammathur/setup-php@v2
         with:
           php-version: '8.3'
-          extensions: curl, json, mbstring
+          extensions: curl, json, mbstring, pdo_mysql
+          tools: composer:v2
           coverage: none
+
+      - name: Composer packages for the server (PHPMailer)
+        run: |
+          composer validate --strict --working-dir=server
+          composer install --no-dev --no-interaction --prefer-dist --working-dir=server
+
+      - name: Allow the test user to create test databases
+        run: mysql -h 127.0.0.1 -P 3306 -uroot -pci-root-only -e "GRANT ALL ON \`lgf\\_test%\`.* TO 'lgf_test'@'%'; FLUSH PRIVILEGES;"
 
       - name: PHP syntax check and unit tests
         run: npm run test:php
 
-      - name: PHP API integration tests (mock FoodData Central)
+      - name: PHP API integration tests (mock FoodData Central, accounts on MariaDB)
         run: npm run test:api
 
       - name: Deploy script tests (cPanel Git and FTPS)
@@ -64,6 +90,9 @@ jobs:
 
       - name: Browser smoke tests
         run: npm run test:e2e
+
+      - name: Account browser tests (php -S + MariaDB)
+        run: npm run test:e2e:accounts
 
       # A ready-to-upload copy of the document-root files, for the File Manager fallback.
       # This is a build artifact only; nothing is deployed from CI.

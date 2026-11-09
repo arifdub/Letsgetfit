@@ -10,6 +10,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import net from 'node:net';
 import http from 'node:http';
+import { cpSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -104,6 +105,10 @@ function deploy(env) {
   });
 }
 
+// A lean copy of server/ without Composer packages keeps each upload fast in tests.
+const LEAN_SERVER = mkdtempSync(path.join(tmpdir(), 'lgf-server-'));
+cpSync(path.join(REPO, 'server'), LEAN_SERVER, { recursive: true, filter: (src) => !src.includes(`${path.sep}vendor`) });
+
 // Pass the ftp handle (preferred) or a bare port.
 const creds = (ftp, extra = {}) => ({
   FTP_SERVER: `ftp://127.0.0.1:${typeof ftp === 'number' ? ftp : ftp.port}`,
@@ -113,6 +118,7 @@ const creds = (ftp, extra = {}) => ({
   FTP_VERIFY_CERT: 'false', // self-signed test certificate
   SITE_URL: typeof ftp === 'number' ? 'http://127.0.0.1:9/' : ftp.siteUrl,
   DEPLOY_DOMAIN: 'letsgetfit.site',
+  DEPLOY_SERVER_SOURCE: LEAN_SERVER,
   ...extra,
 });
 
@@ -298,4 +304,55 @@ test('an FTP account locked to the document root skips the server code safely', 
   assert.match(r.stdout, /cannot reach the folder above the document root/);
   assert.ok(existsSync(path.join(ftp.docroot, 'index.html')));
   assert.ok(!existsSync(path.join(ftp.docroot, 'letsgetfit-private')), 'nothing private inside the web root');
+});
+
+test('accounts settings: written safely when switched on with every secret', { skip }, async (t) => {
+  const ftp = await startFtp();
+  t.after(() => ftp.stop());
+  writeFileSync(path.join(ftp.docroot, '.letsgetfit-docroot'), '');
+  const tricky = `pa'ss\\"word$(x)`;
+  const r = await deploy(creds(ftp, {
+    ACCOUNTS_ENABLED: 'true', DB_NAME: 'cpuser_lgf', DB_USER: 'cpuser_lgf', DB_PASSWORD: tricky,
+    SMTP_HOST: 'mail.letsgetfit.site', SMTP_USER: 'no-reply@letsgetfit.site', SMTP_PASSWORD: tricky, MAIL_FROM: 'no-reply@letsgetfit.site',
+    SITE_URL: ftp.siteUrl,
+  }));
+  assert.equal(r.status, 0, r.stderr + r.stdout);
+  assert.match(r.stdout, /accounts will be switched on/);
+  const file = readFileSync(path.join(path.dirname(ftp.docroot), 'letsgetfit-private', 'config', 'app.php'), 'utf8');
+  const cfg = JSON.parse(spawnSync('php', ['-r', 'echo json_encode(eval(substr(stream_get_contents(STDIN), 5)));'], { input: file, encoding: 'utf8' }).stdout);
+  assert.equal(cfg.accounts_enabled, true);
+  assert.equal(cfg.db_password, tricky);
+  assert.ok(!r.stdout.includes(tricky) && !r.stderr.includes(tricky), 'secrets never printed');
+});
+
+test('accounts settings are built with var_export and pass php -l', () => {
+  const tricky = `pa'ss\\"word$(x)`;
+  const env = {
+    PATH: process.env.PATH, ACCOUNTS_ENABLED: 'true', DB_NAME: 'cpuser_lgf', DB_USER: 'cpuser_lgf', DB_PASSWORD: tricky,
+    SMTP_HOST: 'mail.letsgetfit.site', SMTP_USER: 'u', SMTP_PASSWORD: tricky, MAIL_FROM: 'no-reply@letsgetfit.site', FDC_API_KEY: 'abcd1234EFGH',
+  };
+  const out = spawnSync('php', [path.join(REPO, 'scripts', 'write-config.php')], { encoding: 'utf8', env });
+  assert.equal(out.status, 0, out.stderr);
+  const lint = spawnSync('php', ['-l'], { input: out.stdout, encoding: 'utf8' });
+  assert.equal(lint.status, 0);
+  const loaded = spawnSync('php', ['-r', 'echo json_encode(eval(substr(stream_get_contents(STDIN), 5)));'], { input: out.stdout, encoding: 'utf8' });
+  const cfg = JSON.parse(loaded.stdout);
+  assert.equal(cfg.accounts_enabled, true);
+  assert.equal(cfg.db_password, tricky);
+  assert.equal(cfg.smtp_password, tricky);
+  assert.equal(cfg.db_dsn, 'mysql:host=localhost;port=3306;dbname=cpuser_lgf;charset=utf8mb4');
+  assert.equal(cfg.mail_transport, 'smtp');
+  assert.equal(cfg.cookie_secure, true);
+  assert.equal(cfg.app_url, 'https://letsgetfit.site');
+  // Off by default.
+  const off = spawnSync('php', [path.join(REPO, 'scripts', 'write-config.php')], { encoding: 'utf8', env: { PATH: process.env.PATH } });
+  assert.match(off.stdout, /'accounts_enabled' => false/);
+  assert.doesNotMatch(off.stdout, /db_password/);
+});
+
+test('switching accounts on with missing secrets stops before connecting', async () => {
+  const r = await deploy({ FTP_SERVER: '127.0.0.1:9', FTP_USERNAME: 'u', FTP_PASSWORD: 'p', FTP_DIRECTORY: 'x', ACCOUNTS_ENABLED: 'true', DB_NAME: 'x' });
+  assert.notEqual(r.status, 0);
+  assert.match(r.stderr, /missing: DB_USER DB_PASSWORD SMTP_HOST SMTP_USER SMTP_PASSWORD MAIL_FROM/);
+  assert.doesNotMatch(r.stdout, /logged in/);
 });
