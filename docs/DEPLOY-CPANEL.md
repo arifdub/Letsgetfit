@@ -133,6 +133,8 @@ Food search uses PHP. The deploy uploads:
 
 The settings file is rewritten only when `FDC_API_KEY` is set, or when no settings file exists yet. Otherwise an existing file is left alone, so you can also upload `config/app.example.php` yourself, filled in, as `letsgetfit-private/config/app.php`.
 
+**Confirmed on the live host (9 November 2026):** PHP 8.5 with curl, json and mbstring; private storage is writable; the private folder is found next to the document root.
+
 **Checks:**
 - After each deploy, the workflow calls `https://letsgetfit.site/api/health.php` and prints the reply. For example: `{"ok":true,"php":"8.3","extensions":{"curl":true,…},"storageWritable":true,"foodSearch":"configured"}`. That is how the host's actual PHP version and extensions are confirmed.
 - Set the domain's PHP version to **8.3 or newer**, with the **curl**, **json** and **mbstring** extensions, in the control panel's PHP settings (cPanel: **MultiPHP Manager** / **Select PHP Version**).

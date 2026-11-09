@@ -112,3 +112,11 @@ jobs:
           elif grep -q '"foodSearch":"demo-key"' <<<"$health"; then
             echo "::warning::Food search is using the public DEMO_KEY. Add an FDC_API_KEY repository secret for normal use."
           fi
+          # One real search proves PHP can reach FoodData Central over HTTPS (results are cached).
+          search="$(curl --silent --location --max-time 25 "${SITE_URL%/}/api/foods.php?q=apple" || true)"
+          if grep -q '"results":\[{' <<<"$search"; then
+            echo "Live search check passed: /api/foods.php?q=apple returned results$(grep -q '"cached":true' <<<"$search" && echo ' (from cache)')."
+          else
+            echo "Live search reply: $(head -c 300 <<<"$search")"
+            echo "::warning::A live food search did not return results. If it says not_configured or upstream_unavailable, outbound HTTPS from PHP may be blocked or the key is invalid. Manual entry still works."
+          fi
