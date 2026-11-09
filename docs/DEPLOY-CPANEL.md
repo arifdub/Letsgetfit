@@ -81,7 +81,7 @@ Repository → **Settings → Secrets and variables → Actions**.
 | `FTP_SERVER` | The FTP host name, for example `ftp.letsgetfit.site`. If your host's certificate does not cover that name, use the server's own host name, for example `server123.yourhost.com` (shown in cPanel under **FTP Accounts → Configure FTP Client**). An `ftp://` prefix or `:21` suffix is accepted. |
 | `FTP_USERNAME` | The FTP account, for example `deploy@letsgetfit.site` |
 | `FTP_PASSWORD` | Its password |
-| `FTP_DIRECTORY` | The letsgetfit.site document root **as seen when logged in by FTP**. See below. |
+| `FTP_DIR` (or `FTP_DIRECTORY`) | The letsgetfit.site document root **as seen when logged in by FTP**. See below. |
 
 If a secret is missing or misnamed, the run stops with `missing setting(s): …` naming it.
 
@@ -93,7 +93,7 @@ If a secret is missing or misnamed, the run stops with `missing setting(s): …`
 | `FTP_VERIFY_CERT` | `true` | Set to `false` only if the deploy fails with a certificate error and you cannot use a host name the certificate covers. The connection stays encrypted, but the server's identity is not checked. |
 | `SITE_URL` | `https://letsgetfit.site/` | The address the live check visits |
 
-### Choosing FTP_DIRECTORY
+### Choosing FTP_DIR
 
 FTP paths are relative to where the FTP account lands when it logs in:
 

@@ -72,7 +72,7 @@ More detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 See **[docs/DEPLOY-CPANEL.md](docs/DEPLOY-CPANEL.md)**.
 
-- **Active:** every push to `main` that passes CI is uploaded to cPanel over FTPS by `.github/workflows/deploy.yml`. It uses the repository secrets `FTP_SERVER`, `FTP_USERNAME`, `FTP_PASSWORD` and `FTP_DIRECTORY`. It can also be run by hand from the Actions tab, to redeploy, roll back to an older commit, or do a dry run.
+- **Active:** every push to `main` that passes CI is uploaded to cPanel over FTPS by `.github/workflows/deploy.yml`. It uses the repository secrets `FTP_SERVER`, `FTP_USERNAME`, `FTP_PASSWORD` and `FTP_DIR`. It can also be run by hand from the Actions tab, to redeploy, roll back to an older commit, or do a dry run.
 - **One-time server step:** create an empty `.letsgetfit-docroot` file in the letsgetfit.site document root. Deploys refuse to run without it.
 - **Alternative:** cPanel Git Version Control with `.cpanel.yml`.
 
