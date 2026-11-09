@@ -19,7 +19,8 @@ final class OutboxMailer implements Mailer
         if (!is_dir($this->dir) && !@mkdir($this->dir, 0700, true)) {
             throw new \RuntimeException('Outbox not writable.');
         }
-        $file = sprintf('%s/%s-%s.json', $this->dir, gmdate('Ymd\THis'), bin2hex(random_bytes(4)));
+        // Microsecond timestamp first, so files sort in the order they were sent.
+        $file = sprintf('%s/%s-%s.json', $this->dir, (new \DateTimeImmutable('now', new \DateTimeZone('UTC')))->format('Ymd\THis.u'), bin2hex(random_bytes(4)));
         file_put_contents($file, json_encode(['to' => $to, 'subject' => $subject, 'text' => $text], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
     }
 }

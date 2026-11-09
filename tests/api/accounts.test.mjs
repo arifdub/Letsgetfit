@@ -248,7 +248,7 @@ test('registration does not reveal existing accounts; validation messages', { sk
   const again = await c.post('register', { email: 'niamh@example.ie', password: 'another long passphrase', healthConsent: true });
   assert.equal(again.status, 200);
   assert.match(again.body.message, /Check your email/);
-  assert.match(s.outbox().pop().text, /you already have one/);
+  assert.ok(s.outbox().some((m) => m.to === 'niamh@example.ie' && /you already have one/.test(m.text)), 'existing-account email sent');
   assert.equal(JSON.parse(sql('SELECT COUNT(*) AS n FROM users', s.dbName).stdout)[0].n, 1);
   assert.equal((await c.post('register', { email: 'not-an-email', password: PASSWORD, healthConsent: true })).body.error, 'invalid_email');
   assert.equal((await c.post('register', { email: 'a@example.ie', password: 'short', healthConsent: true })).body.error, 'weak_password');
