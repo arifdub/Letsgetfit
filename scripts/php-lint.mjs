@@ -5,12 +5,14 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const dirs = ['server', 'public/api', 'config', 'tests/php'];
+const dirs = ['server', 'public/api', 'config', 'tests/php', 'scripts'];
 const files = [];
 const walk = (dir) => {
   for (const name of readdirSync(dir)) {
     const full = path.join(dir, name);
-    if (statSync(full).isDirectory()) walk(full);
+    if (statSync(full).isDirectory()) {
+      if (name !== 'vendor') walk(full);
+    }
     else if (name.endsWith('.php')) files.push(full);
   }
 };

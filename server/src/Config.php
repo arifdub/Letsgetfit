@@ -31,6 +31,24 @@ final class Config
             'global_requests_per_hour' => 900,
             // Random secret used to hash IP addresses for rate limiting. Set one in production.
             'hash_secret' => '',
+
+            // ---- Phase 4: optional accounts (off until the privacy review is done) ----
+            'accounts_enabled' => false,
+            'app_url' => 'https://letsgetfit.site',
+            'db_dsn' => '',            // e.g. mysql:host=localhost;dbname=cpuser_letsgetfit;charset=utf8mb4
+            'db_user' => '',
+            'db_password' => '',
+            'mail_transport' => 'outbox', // 'smtp' in production; 'outbox' writes emails to private storage
+            'mail_from' => 'no-reply@letsgetfit.site',
+            'mail_from_name' => 'LetsGetFit',
+            'smtp_host' => '',
+            'smtp_port' => 587,
+            'smtp_user' => '',
+            'smtp_password' => '',
+            'smtp_secure' => 'tls',       // 'tls' (STARTTLS, port 587) or 'ssl' (port 465)
+            'cookie_name' => '__Host-lgf_session',
+            'cookie_secure' => true,
+            'session_days' => 30,
         ];
         $file = $privateDir . '/config/app.php';
         $loaded = [];
@@ -55,6 +73,11 @@ final class Config
         $v = $this->values[$key] ?? '';
 
         return is_string($v) ? $v : '';
+    }
+
+    public function bool(string $key): bool
+    {
+        return ($this->values[$key] ?? false) === true;
     }
 
     public function int(string $key): int

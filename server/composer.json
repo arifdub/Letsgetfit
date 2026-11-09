@@ -1,0 +1,15 @@
+{
+    "name": "letsgetfit/server",
+    "description": "LetsGetFit server code (deployed outside the web root)",
+    "type": "project",
+    "license": "proprietary",
+    "require": {
+        "php": ">=8.3",
+        "phpmailer/phpmailer": "^7.2"
+    },
+    "config": {
+        "optimize-autoloader": true,
+        "sort-packages": true,
+        "platform-check": true
+    }
+}

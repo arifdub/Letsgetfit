@@ -31,3 +31,6 @@ Thumbs.db
 .vscode/
 .idea/
 *.swp
+
+# Composer packages (built in CI and uploaded by the deploy)
+server/vendor/

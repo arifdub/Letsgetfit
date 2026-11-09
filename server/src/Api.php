@@ -4,7 +4,13 @@ declare(strict_types=1);
 
 namespace LetsGetFit;
 
+use LetsGetFit\Accounts\AccountController;
+use LetsGetFit\Auth\SessionManager;
+use LetsGetFit\Db\Database;
 use LetsGetFit\Http\CurlHttpClient;
+use LetsGetFit\Mail\Mailer;
+use LetsGetFit\Mail\OutboxMailer;
+use LetsGetFit\Mail\SmtpMailer;
 
 /** Wires the endpoints together and writes JSON responses. Called from public/api/*.php. */
 final class Api
@@ -13,6 +19,12 @@ final class Api
     {
         try {
             $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
+            if ($endpoint === 'account') {
+                [$status, $body, $headers] = self::account(Config::load($privateDir));
+                self::send($status, $body, $headers);
+
+                return;
+            }
             if ($method !== 'GET' && $method !== 'HEAD') {
                 self::send(405, ['error' => 'method_not_allowed', 'message' => 'Use GET.'], ['Allow' => 'GET, HEAD']);
 
@@ -46,6 +58,40 @@ final class Api
     }
 
     /** @return array{0: int, 1: array<string, mixed>, 2: array<string, string>} */
+    public static function account(Config $config): array
+    {
+        if (!$config->bool('accounts_enabled')) {
+            // A normal answer, not an error: the app simply does not show account features.
+            return [200, ['enabled' => false, 'message' => 'Accounts are not available yet. Everything still works on this device.'], ['Cache-Control' => 'no-store']];
+        }
+        try {
+            $pdo = Database::connect($config);
+        } catch (\Throwable $e) {
+            error_log('LetsGetFit database error: ' . $e::class);
+
+            return [503, ['enabled' => false, 'error' => 'database_unavailable', 'message' => 'Accounts are not available right now. Everything still works on this device.'], ['Cache-Control' => 'no-store']];
+        }
+        $storage = $config->string('storage_dir');
+        $secret = $config->string('hash_secret') !== '' ? $config->string('hash_secret') : hash('sha256', $config->string('db_password') . __DIR__);
+        $controller = new AccountController(
+            $pdo,
+            new SessionManager($config, $storage),
+            self::mailer($config),
+            new RateLimiter($storage . '/ratelimit', $secret),
+            $config,
+        );
+
+        return $controller->handle($_SERVER, $_GET, (string) file_get_contents('php://input'));
+    }
+
+    public static function mailer(Config $config): Mailer
+    {
+        return $config->string('mail_transport') === 'smtp'
+            ? new SmtpMailer($config)
+            : new OutboxMailer($config->string('storage_dir') . '/outbox');
+    }
+
+    /** @return array{0: int, 1: array<string, mixed>, 2: array<string, string>} */
     public static function health(Config $config): array
     {
         $curl = function_exists('curl_init');
@@ -62,6 +108,8 @@ final class Api
             ],
             'storageWritable' => $storageOk,
             'foodSearch' => $foodSearch,
+            'accounts' => $config->bool('accounts_enabled') ? 'enabled' : 'disabled',
+            'pdoMysql' => extension_loaded('pdo_mysql'),
         ], ['Cache-Control' => 'no-store']];
     }
 

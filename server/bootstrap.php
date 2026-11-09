@@ -12,6 +12,11 @@ declare(strict_types=1);
  *   <private>/storage/   cache and rate-limit files (created at runtime)
  */
 
+// Composer packages (PHPMailer), built in CI and uploaded with the deploy.
+if (is_file(__DIR__ . '/vendor/autoload.php')) {
+    require __DIR__ . '/vendor/autoload.php';
+}
+
 spl_autoload_register(static function (string $class): void {
     $prefix = 'LetsGetFit\\';
     if (strncmp($class, $prefix, strlen($prefix)) !== 0) {
