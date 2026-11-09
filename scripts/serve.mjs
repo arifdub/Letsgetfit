@@ -25,6 +25,8 @@ async function resolveFile(urlPath) {
   if (!target.startsWith(ROOT)) return null;
   // Mirror .htaccess: never serve dotfiles.
   if (path.relative(ROOT, target).split(path.sep).some((part) => part.startsWith('.'))) return null;
+  // No PHP here: behave like a static host so the app's "search unavailable" path is used.
+  if (target.endsWith('.php')) return null;
   try {
     const s = await stat(target);
     if (s.isDirectory()) return resolveFile(path.posix.join(urlPath, 'index.html'));

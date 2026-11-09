@@ -5,10 +5,11 @@ import { Store } from './storage/store.js';
 import { initOverview } from './ui/overview.js';
 import { initWorkouts, initWeights } from './ui/logs.js';
 import { initSettings } from './ui/settings.js';
+import { initFood } from './ui/food.js';
 import { $, $$, toast } from './ui/dom.js';
 
-export const APP_VERSION = '0.1.0';
-const ROUTES = ['overview', 'workouts', 'progress', 'settings'];
+export const APP_VERSION = '0.2.0';
+const ROUTES = ['overview', 'food', 'workouts', 'progress', 'settings'];
 
 function showRoute(route, { focus }) {
   for (const view of $$('.view')) view.hidden = view.dataset.view !== route;
@@ -39,6 +40,7 @@ function start() {
 
   $('#app-version').textContent = APP_VERSION;
   initOverview(store);
+  initFood(store);
   initWorkouts(store);
   initWeights(store);
   initSettings(store);

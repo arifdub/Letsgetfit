@@ -32,7 +32,17 @@ for (const file of files) {
   const base = parts.at(-1);
   if (parts.some((p) => p === 'node_modules' || p === '.git' || p === '.well-known' || p === 'config')) problems.push(`not deployable: ${rel}`);
   if (base.startsWith('.') && !ALLOWED_DOTFILES.has(base)) problems.push(`dotfile not allowed: ${rel}`);
-  if (!base.startsWith('.') && !ALLOWED_EXT.has(path.extname(base))) problems.push(`file type not allowed: ${rel}`);
+  const isApiPhp = parts.length === 2 && parts[0] === 'api' && base.endsWith('.php');
+  if (!base.startsWith('.') && !ALLOWED_EXT.has(path.extname(base)) && !isApiPhp) problems.push(`file type not allowed: ${rel}`);
+}
+
+// PHP in the web root must stay thin: entry points that load code from the private folder.
+for (const file of files.filter((f) => f.endsWith('.php'))) {
+  const rel = path.relative(ROOT, file);
+  const code = await readFile(file, 'utf8');
+  if (code.split('\n').length > 60) problems.push(`${rel}: PHP entry points must stay small; put logic in server/`);
+  if (/(api[_-]?key|password|secret)\s*[=:>]+\s*['"][^'"]{6,}/i.test(code)) problems.push(`${rel}: looks like it contains a secret`);
+  if (!/^<\?php\s+declare\(strict_types=1\);/.test(code)) problems.push(`${rel}: must start with declare(strict_types=1)`);
 }
 
 const htmlFiles = files.filter((f) => f.endsWith('.html'));

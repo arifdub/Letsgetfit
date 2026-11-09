@@ -28,7 +28,7 @@ export function initSettings(store) {
   $('#clear-data').addEventListener('click', async () => {
     const ok = await confirmAction({
       title: 'Clear all data?',
-      body: 'This permanently removes your details, workouts and weight log from this browser. It cannot be undone. Download a copy first if you want to keep it.',
+      body: 'This permanently removes your details, food diary, saved foods, workouts and weight log from this browser. It cannot be undone. Download a copy first if you want to keep it.',
       confirmLabel: 'Clear all data',
     });
     if (!ok) return;
@@ -48,6 +48,8 @@ export function initSettings(store) {
       : 'Status: this browser is blocking storage, so entries will be lost when you close the page.';
     const counts = [
       ['Your details', store.profile ? 'Saved' : 'Not entered'],
+      ['Diary entries', String(store.diary.length)],
+      ['Saved foods', String(store.foods.length)],
       ['Workouts', String(store.workouts.length)],
       ['Weight entries', String(store.weights.length)],
     ];
