@@ -1,5 +1,6 @@
 import { $, $$, h, toast, confirmAction } from './dom.js';
 import { toLocalDateString } from '../lib/dates.js';
+import { workoutsCsv, setsCsv, weightsCsv, diaryCsv } from '../lib/csv.js';
 
 export function initSettings(store) {
   const unitsRadios = $$('input[name="settings-units"]');
@@ -24,6 +25,30 @@ export function initSettings(store) {
     setTimeout(() => URL.revokeObjectURL(url), 1000);
     toast('Your data file has been downloaded.');
   });
+
+  function download(filename, content, type) {
+    const blob = new Blob([content], { type });
+    const url = URL.createObjectURL(blob);
+    const link = h('a', { href: url, download: filename });
+    document.body.append(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  const CSV = {
+    workouts: () => workoutsCsv(store.workouts),
+    sets: () => setsCsv(store.workouts),
+    weights: () => weightsCsv(store.weights),
+    diary: () => diaryCsv(store.diary),
+  };
+  for (const button of document.querySelectorAll('[data-csv]')) {
+    button.addEventListener('click', () => {
+      const kind = button.dataset.csv;
+      download(`letsgetfit-${kind}-${toLocalDateString()}.csv`, CSV[kind](), 'text/csv;charset=utf-8');
+      toast(`${button.textContent} downloaded as CSV.`);
+    });
+  }
 
   $('#clear-data').addEventListener('click', async () => {
     const ok = await confirmAction({

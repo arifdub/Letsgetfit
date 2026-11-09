@@ -177,10 +177,22 @@
     <!-- WORKOUTS -->
     <section id="view-workouts" class="view" data-view="workouts" aria-labelledby="workouts-title" hidden>
       <h1 id="workouts-title" class="view__title" tabindex="-1">Workouts</h1>
-      <p class="muted">Log what you did. Your usual exercise is already part of the activity level in your maintenance estimate, so workouts here are not added on top of it.</p>
+      <p class="muted">Follow a routine, log sets and reps, or record any activity. Your usual exercise is already part of the activity level in your maintenance estimate, so workouts here are not added on top of it.</p>
+
+      <div class="card" id="week-summary"></div>
+
+      <section class="card" aria-labelledby="train-title">
+        <h2 id="train-title">Start training</h2>
+        <div id="session-resume"></div>
+        <ul class="routine-list" id="routine-list" aria-label="Starter routines"></ul>
+        <div class="form__actions"><button type="button" class="button" id="start-empty-session">Start an empty session</button></div>
+      </section>
+
+      <section id="session-panel" class="card session-panel" hidden aria-labelledby="session-title-heading"></section>
 
       <form id="workout-form" class="card form" novalidate aria-labelledby="workout-form-title">
-        <h2 id="workout-form-title">Add a workout</h2>
+        <h2 id="workout-form-title">Log an activity</h2>
+        <p class="muted small">For walks, runs, swims, classes and sports, record the type and duration.</p>
         <div class="error-summary" id="workout-errors" role="alert" tabindex="-1" hidden><h3>Please check the following</h3><ul></ul></div>
         <div class="grid-2">
           <div class="field" data-field="localDate">
@@ -215,12 +227,41 @@
 
       <h2 class="section-title">History</h2>
       <div id="workout-list"></div>
+
+      <section class="card library" id="library" aria-labelledby="library-title">
+        <h2 id="library-title">Exercise library</h2>
+        <p class="muted small">Form cues, equipment, difficulty and easier or equipment-free swaps for every exercise.</p>
+        <div class="library-filters">
+          <div class="field"><label for="library-search">Search</label><input id="library-search" type="search" class="input" autocomplete="off" placeholder="For example: squat, back"></div>
+          <div class="field"><label for="library-equipment">Equipment</label>
+            <select id="library-equipment" class="input">
+              <option value="all">Any</option>
+              <option value="bodyweight">At home, no weights</option>
+              <option value="dumbbells">Dumbbells or kettlebell</option>
+              <option value="gym">Gym machines and barbells</option>
+            </select>
+          </div>
+          <div class="field"><label for="library-category">Type</label>
+            <select id="library-category" class="input">
+              <option value="all">All</option>
+              <option value="strength">Strength</option>
+              <option value="core">Core</option>
+              <option value="cardio">Cardio</option>
+            </select>
+          </div>
+        </div>
+        <p class="muted small" id="library-count" aria-live="polite"></p>
+        <div id="library-results"></div>
+      </section>
     </section>
 
     <!-- PROGRESS -->
     <section id="view-progress" class="view" data-view="progress" aria-labelledby="progress-title" hidden>
       <h1 id="progress-title" class="view__title" tabindex="-1">Progress</h1>
       <p class="muted">Body weight moves up and down from day to day with fluid, food and timing. Changes over several weeks tell you more than any single reading.</p>
+
+      <section class="card" id="trend-card" aria-label="Weight trend"></section>
+      <section class="card" id="weekly-card" aria-label="Weekly summary"></section>
 
       <form id="weight-form" class="card form" novalidate aria-labelledby="weight-form-title">
         <h2 id="weight-form-title">Log your weight</h2>
@@ -282,7 +323,7 @@
 
       <div class="card">
         <h2>Your data on this device</h2>
-        <p>LetsGetFit has no accounts yet. Your details, food diary, workouts and weight log are saved only in this browser's local storage on this device. There is no analytics or tracking. The only thing sent to our server is the text you type into food search, which is passed on to USDA FoodData Central and not stored with anything about you.</p>
+        <p>LetsGetFit has no accounts yet. Your details, food diary, workouts, training sessions and weight log are saved only in this browser's local storage on this device. There is no analytics or tracking. The only thing sent to our server is the text you type into food search, which is passed on to USDA FoodData Central and not stored with anything about you.</p>
         <ul class="bullets">
           <li>Clearing your browser data, or using a private window, removes it.</li>
           <li>It is not shared between browsers or devices.</li>
@@ -293,6 +334,14 @@
         <div class="form__actions">
           <button type="button" class="button" id="export-data">Download a copy (JSON)</button>
           <button type="button" class="button button--danger" id="clear-data">Clear all data</button>
+        </div>
+        <h3>Download as spreadsheets (CSV)</h3>
+        <p class="muted small">CSV files open in Excel, Numbers or Google Sheets. Weights are in kg and amounts in grams.</p>
+        <div class="form__actions" id="csv-exports">
+          <button type="button" class="button button--small" data-csv="workouts">Workouts</button>
+          <button type="button" class="button button--small" data-csv="sets">Sets and reps</button>
+          <button type="button" class="button button--small" data-csv="weights">Weight log</button>
+          <button type="button" class="button button--small" data-csv="diary">Food diary</button>
         </div>
       </div>
 

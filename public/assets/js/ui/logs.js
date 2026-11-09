@@ -4,7 +4,8 @@
 import { ACTIVITIES, getActivity, estimateActiveKcal, roundActiveKcal } from '../lib/activities.js';
 import { validateWorkout, validateWeightEntry } from '../lib/validate.js';
 import { toLocalDateString, formatLocalDate } from '../lib/dates.js';
-import { kgToStonePounds, roundTo } from '../lib/units.js';
+import { kgToStonePounds, roundTo, KG_PER_POUND } from '../lib/units.js';
+import { sessionStats, activityLabel } from '../lib/training.js';
 import { $, h, formatNumber, formatWeight, applyUnitsVisibility, showFormErrors, clearFormErrors, toast, confirmAction, emptyState, readForm } from './dom.js';
 
 /** The weight to use for MET estimates: the calculator weight, else the latest log entry. */
@@ -29,7 +30,7 @@ function entryActions(label, onEdit, onDelete) {
 
 /* ---------------- Workouts ---------------- */
 
-export function initWorkouts(store) {
+export function initWorkouts(store, { onEditSession } = {}) {
   const form = $('#workout-form');
   const summary = $('#workout-errors');
   const list = $('#workout-list');
@@ -76,6 +77,7 @@ export function initWorkouts(store) {
       : null;
     // Snapshot the inputs so the entry stays the same if the MET table or weight changes later.
     const record = {
+      type: 'activity',
       localDate: result.value.localDate,
       activityId: activity.id,
       activityLabel: activity.label,
@@ -125,7 +127,7 @@ export function initWorkouts(store) {
   async function remove(entry) {
     const ok = await confirmAction({
       title: 'Delete this workout?',
-      body: `${entry.activityLabel ?? getActivity(entry.activityId)?.label ?? 'Workout'} on ${formatLocalDate(entry.localDate)} will be removed from this device.`,
+      body: `${activityLabel(entry)} on ${formatLocalDate(entry.localDate)} will be removed from this device.`,
     });
     if (!ok) return;
     try {
@@ -142,7 +144,7 @@ export function initWorkouts(store) {
   function render() {
     const entries = store.workouts;
     if (entries.length === 0) {
-      list.replaceChildren(emptyState('No workouts yet', 'Add your first workout above. Walks, classes and gym sessions all count.'));
+      list.replaceChildren(emptyState('No workouts yet', 'Start a routine or log an activity above. Walks, classes and gym sessions all count.'));
       return;
     }
     list.replaceChildren(
@@ -150,27 +152,36 @@ export function initWorkouts(store) {
         'ul',
         { class: 'entries', 'aria-label': 'Workout history' },
         entries.map((entry) => {
-          const label = entry.activityLabel ?? getActivity(entry.activityId)?.label ?? 'Workout';
+          const label = activityLabel(entry);
           const when = formatLocalDate(entry.localDate);
           let estimate = null;
           if (entry.showEstimate) {
             estimate =
-              entry.estimatedActiveKcal === null
+              entry.estimatedActiveKcal === null || entry.estimatedActiveKcal === undefined
                 ? h('p', { class: 'entry__meta muted' }, 'No estimate available')
                 : h('p', { class: 'entry__meta' }, `About ${formatNumber(entry.estimatedActiveKcal)} kcal active energy (estimate, not added to your daily figure)`);
           }
+          const isSession = entry.type === 'session';
+          const stats = isSession ? sessionStats(entry) : null;
+          const meta = [when, `${entry.durationMin} min`];
+          if (isSession) {
+            meta.push(`${stats.sets} ${stats.sets === 1 ? 'set' : 'sets'}`);
+            if (stats.volumeKg > 0) meta.push(`${formatNumber(Math.round(store.units === 'imperial' ? stats.volumeKg / KG_PER_POUND : stats.volumeKg))} ${store.units === 'imperial' ? 'lb' : 'kg'} lifted`);
+            if (entry.sessionRpe) meta.push(`effort ${entry.sessionRpe}/10`);
+          }
           return h(
             'li',
-            { class: 'entry', dataset: { id: entry.id } },
+            { class: `entry${isSession ? ' entry--session' : ''}`, dataset: { id: entry.id, type: entry.type ?? 'activity' } },
             h(
               'div',
               { class: 'entry__body' },
               h('p', { class: 'entry__title' }, label),
-              h('p', { class: 'entry__meta' }, `${when} · ${entry.durationMin} min`),
+              h('p', { class: 'entry__meta' }, meta.join(' · ')),
               estimate,
               entry.notes ? h('p', { class: 'entry__notes' }, entry.notes) : null,
+              isSession ? sessionDetails(entry, store.units) : null,
             ),
-            entryActions(`${label}, ${when}`, () => edit(entry), () => remove(entry)),
+            entryActions(`${label}, ${when}`, () => (isSession ? onEditSession?.(entry) : edit(entry)), () => remove(entry)),
           );
         }),
       ),
@@ -323,4 +334,19 @@ export function initWeights(store) {
 function stripMeta(profile) {
   const { id, createdAt, updatedAt, ...rest } = profile;
   return rest;
+}
+
+function sessionDetails(entry, units) {
+  const loadText = (kg) => (units === 'imperial' ? `${formatNumber(roundTo(kg / KG_PER_POUND, 1), 1)} lb` : `${formatNumber(roundTo(kg, 2), 2)} kg`);
+  const setText = (ex, s) => {
+    if (ex.logType === 'cardio') return `${formatNumber(roundTo(s.durationSec / 60, 1), 1)} min`;
+    if (ex.logType === 'time') return `${s.durationSec} s`;
+    return Number.isFinite(s.loadKg) ? `${s.reps} × ${loadText(s.loadKg)}` : `${s.reps}`;
+  };
+  return h(
+    'details',
+    { class: 'disclosure disclosure--compact' },
+    h('summary', {}, 'Exercises and sets'),
+    h('ul', { class: 'bullets small' }, entry.exercises.map((ex) => h('li', {}, h('strong', {}, ex.name), `: ${ex.sets.map((s) => setText(ex, s)).join(', ')}`))),
+  );
 }

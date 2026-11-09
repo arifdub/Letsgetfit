@@ -406,7 +406,7 @@ await check('food: empty day, search, add with grams, totals and persistence', a
   assert.match(await page.textContent('tr[data-nutrient="potassium"]'), /161 mg/);
   // Stored with source, ID, per-100 g values, units, grams and a nutrient snapshot.
   const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('letsgetfit.data')));
-  assert.equal(stored.schemaVersion, 2);
+  assert.equal(stored.schemaVersion, 3);
   const entry = stored.diary[0];
   assert.equal(entry.source, 'usda-fdc');
   assert.equal(entry.sourceId, '171688');
@@ -614,9 +614,259 @@ await check('food: Phase 1 data is kept after the upgrade', async () => {
   await page.waitForSelector('[data-meal="lunch"] .entry');
   assert.match(await page.textContent('#day-totals'), /maintenance estimate is about 3,290 kcal/);
   const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('letsgetfit.data')));
-  assert.equal(stored.schemaVersion, 2);
+  assert.equal(stored.schemaVersion, 3);
   assert.equal(stored.workouts.length, 1);
   assert.equal(stored.weights.length, 1);
+  await context.close();
+});
+
+// ---------------- Phase 3: training and progress ----------------
+
+async function openWorkouts(page) {
+  await page.click('.primary-nav a[data-route="workouts"]');
+  await page.waitForSelector('#view-workouts:not([hidden])');
+}
+
+await check('training: run a routine, log sets with load, save, see history and weekly summary', async () => {
+  const { page, context, errors } = await freshPage();
+  await fillMetric(page);
+  await page.waitForSelector('#stat-ree');
+  await openWorkouts(page);
+  assert.match(await page.textContent('#week-summary'), /Workouts\s*0/);
+  await page.click('[data-start-routine="home-dumbbell"]');
+  await page.waitForSelector('#session-panel:not([hidden])');
+  assert.equal(await page.evaluate(() => document.activeElement.id), 'session-title-heading');
+  assert.equal(await page.locator('.session-exercise').count(), 6);
+  assert.match(await page.textContent('.session-exercise[data-exercise="goblet-squat"]'), /Target: 8–12 reps/);
+  // Form cues are available in the logger.
+  await page.click('.session-exercise[data-exercise="goblet-squat"] summary');
+  assert.match(await page.textContent('.session-exercise[data-exercise="goblet-squat"]'), /close to your chest/);
+  await page.fill('#set-0-0-reps', '10');
+  await page.fill('#set-0-0-load', '12');
+  await page.fill('#set-0-1-reps', '10');
+  await page.fill('#set-0-1-load', '12,5');
+  await page.fill('#set-5-0-reps', '6'); // dead bug, reps only
+  await page.selectOption('#session-rpe', '6');
+  await page.check('#session-estimate');
+  await page.click('#session-save');
+  await page.waitForSelector('#session-panel', { state: 'hidden' });
+  const entry = page.locator('#workout-list .entry[data-type="session"]');
+  assert.match(await entry.textContent(), /Home with dumbbells/);
+  assert.match(await entry.textContent(), /35 min · 3 sets · 245 kg lifted · effort 6\/10/);
+  // (3.5 − 1) × 80 kg × 35/60 h = 116.7 -> 115
+  assert.match(await entry.textContent(), /About 115 kcal active energy \(estimate, not added/);
+  await entry.locator('summary').click();
+  assert.match(await entry.textContent(), /Goblet squat: 10 × 12 kg, 10 × 12\.5 kg/);
+  assert.match(await page.textContent('#week-workouts'), /^1$/);
+  assert.match(await page.textContent('#week-minutes'), /^35$/);
+  assert.match(await page.textContent('#week-strength'), /^1$/);
+  // Maintenance is unchanged by training.
+  await page.click('.primary-nav a[data-route="overview"]');
+  assert.match(await page.textContent('#stat-maintenance .stat__value'), /3,290 kcal/);
+  const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('letsgetfit.data')));
+  assert.equal(stored.workouts[0].type, 'session');
+  assert.equal(stored.workouts[0].exercises[0].sets[1].loadKg, 12.5);
+  assert.equal(stored.draftSession, null);
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+await check('training: swap an exercise, add one from the library, draft survives reload', async () => {
+  const { page, context } = await freshPage();
+  await page.goto(`${BASE}#workouts`);
+  await page.click('[data-start-routine="gym-a"]');
+  await page.waitForSelector('#session-panel:not([hidden])');
+  await page.selectOption('#swap-0', 'goblet-squat');
+  await page.waitForSelector('.session-exercise[data-exercise="goblet-squat"]');
+  assert.equal(await page.locator('.session-exercise[data-exercise="leg-press"]').count(), 0);
+  assert.equal(await page.locator('.session-exercise[data-exercise="goblet-squat"] .set-row').count(), 3, 'sets kept');
+  // Library: filter and add.
+  await page.fill('#library-search', 'farmer');
+  await page.waitForFunction(() => document.querySelector('#library-count').textContent.startsWith('1 '));
+  await page.click('#library-results summary');
+  await page.click('#library-results .library-add');
+  await page.waitForSelector('.session-exercise[data-exercise="farmers-carry"]');
+  await page.fill('#set-0-0-reps', '8');
+  await page.fill('#set-0-0-load', '16');
+  await page.waitForTimeout(400); // draft autosave debounce
+  await page.reload();
+  await openWorkouts(page);
+  await page.waitForSelector('#resume-session');
+  await page.click('#resume-session');
+  await page.waitForSelector('#session-panel:not([hidden])');
+  assert.equal(await page.inputValue('#set-0-0-load'), '16');
+  assert.equal(await page.locator('.session-exercise[data-exercise="farmers-carry"]').count(), 1);
+  // Time-based set on the carry.
+  const carryIndex = await page.locator('.session-exercise').count() - 1;
+  await page.fill(`#set-${carryIndex}-0-amount`, '40');
+  await page.click('#session-save');
+  await page.waitForSelector('#session-panel', { state: 'hidden' });
+  const text = await page.textContent('#workout-list .entry[data-type="session"]');
+  assert.match(text, /2 sets/);
+  await context.close();
+});
+
+await check('training: validation errors are listed and linked; edit a saved session', async () => {
+  const { page, context } = await freshPage();
+  await page.goto(`${BASE}#workouts`);
+  await page.click('#start-empty-session');
+  await page.waitForSelector('#session-panel:not([hidden])');
+  await page.click('#session-save');
+  await page.waitForSelector('#session-errors:not([hidden])');
+  assert.match(await page.textContent('#session-errors'), /how long the session took/);
+  assert.match(await page.textContent('#session-errors'), /at least one set/);
+  await page.selectOption('#add-exercise-select', 'push-up');
+  await page.click('.add-exercise button');
+  await page.waitForSelector('.session-exercise[data-exercise="push-up"]');
+  await page.fill('#set-0-0-reps', '12.5');
+  await page.fill('#session-duration', '20');
+  await page.click('#session-save');
+  await page.waitForSelector('#session-errors:not([hidden])');
+  assert.match(await page.textContent('#session-errors'), /Push-up, set 1: enter whole repetitions/);
+  assert.equal(await page.getAttribute('#set-0-0-reps', 'aria-invalid'), 'true');
+  await page.click('#session-errors a');
+  assert.equal(await page.evaluate(() => document.activeElement.id), 'set-0-0-reps');
+  await page.fill('#set-0-0-reps', '12');
+  await page.click('#session-save');
+  await page.waitForSelector('#session-panel', { state: 'hidden' });
+  // Edit: change reps and save.
+  await page.click('#workout-list .entry[data-type="session"] button:has-text("Edit")');
+  await page.waitForSelector('#session-panel:not([hidden])');
+  assert.match(await page.textContent('#session-title-heading'), /Edit session/);
+  assert.equal(await page.inputValue('#set-0-0-reps'), '12');
+  await page.fill('#set-0-0-reps', '15');
+  await page.click('#session-save');
+  await page.waitForSelector('#session-panel', { state: 'hidden' });
+  await page.click('#workout-list .entry[data-type="session"] summary');
+  assert.match(await page.textContent('#workout-list .entry[data-type="session"]'), /Push-up: 15/);
+  const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('letsgetfit.data')));
+  assert.equal(stored.workouts.length, 1, 'edited, not duplicated');
+  await context.close();
+});
+
+await check('library: filters by equipment and type, shows cues and swaps', async () => {
+  const { page, context } = await freshPage();
+  await page.goto(`${BASE}#workouts`);
+  await page.selectOption('#library-equipment', 'gym');
+  const names = await page.locator('#library-results .exercise__name').allTextContents();
+  assert.ok(names.includes('Leg press') && !names.includes('Push-up'), names.join(','));
+  await page.selectOption('#library-equipment', 'all');
+  await page.selectOption('#library-category', 'cardio');
+  assert.equal(await page.locator('#library-results .library-list > li').count(), 3);
+  await page.selectOption('#library-category', 'all');
+  await page.fill('#library-search', 'push-up');
+  await page.click('#library-results li[data-exercise="push-up"] summary');
+  const text = await page.textContent('#library-results li[data-exercise="push-up"]');
+  assert.match(text, /Swap for: Incline push-up/);
+  assert.match(text, /Intermediate/);
+  assert.equal(await page.isVisible('#library-results li[data-exercise="push-up"] .library-add'), false, 'Add only shows during a session');
+  await context.close();
+});
+
+async function seedWeights(page, list) {
+  await page.evaluate((weights) => {
+    const d = JSON.parse(localStorage.getItem('letsgetfit.data') ?? 'null') ?? { schemaVersion: 3, preferences: { units: 'metric' }, profile: null, workouts: [], weights: [], foods: [], diary: [], draftSession: null };
+    d.weights = weights.map((w, i) => ({ id: `w${i}`, createdAt: '2026-01-01T00:00:00.000Z', ...w }));
+    localStorage.setItem('letsgetfit.data', JSON.stringify(d));
+  }, list);
+  await page.reload();
+}
+
+function isoDaysAgo(n) {
+  const d = new Date();
+  d.setDate(d.getDate() - n);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+await check('progress: trend needs enough data; chart, keyboard tooltip and table', async () => {
+  const { page, context, errors } = await freshPage();
+  await page.goto(`${BASE}#progress`);
+  assert.match(await page.textContent('#trend-card'), /Not enough entries yet/);
+  assert.match(await page.textContent('#weekly-card'), /No training logged yet/);
+  await seedWeights(page, [{ localDate: isoDaysAgo(1), weightKg: 80 }, { localDate: isoDaysAgo(0), weightKg: 78 }]);
+  await page.goto(`${BASE}#progress`);
+  await page.waitForSelector('#weight-chart svg');
+  assert.match(await page.textContent('#trend-summary'), /change over time is shown once you have at least 4 entries/, 'a 2 kg one-day drop is not reported as change');
+  // 30 days of readings every other day, trending down.
+  const list = [];
+  for (let i = 30; i >= 0; i -= 2) list.push({ localDate: isoDaysAgo(i), weightKg: 80 + (i % 4 === 0 ? 0.6 : -0.6) - (30 - i) * 0.03 });
+  await seedWeights(page, list);
+  await page.goto(`${BASE}#progress`);
+  await page.waitForSelector('#weight-chart svg');
+  assert.match(await page.textContent('#trend-summary'), /7-day average changed by −0\.\d kg over the last 2\d days/);
+  assert.equal(await page.locator('#weight-chart circle.chart-dot').count(), list.length);
+  assert.equal(await page.locator('#weight-chart path.chart-trend').count(), 1);
+  assert.match(await page.textContent('.chart-legend'), /Daily reading.*7-day average/);
+  await page.focus('#weight-chart svg');
+  await page.waitForSelector('.chart-tooltip:not([hidden])');
+  assert.match(await page.textContent('.chart-tooltip'), /Reading: .* kg7-day average: .* kg/);
+  await page.keyboard.press('Home');
+  assert.match(await page.textContent('.chart-tooltip'), new RegExp(new Date(Date.now() - 30 * 864e5).getDate().toString()));
+  // Pointer hover shows the tooltip too.
+  const box = await page.locator('#weight-chart svg').boundingBox();
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  assert.equal(await page.isVisible('.chart-tooltip'), true);
+  await page.click('#trend-card summary');
+  assert.equal(await page.locator('#trend-table tbody tr').count(), list.length);
+  // No horizontal scroll on a phone with the chart.
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+  assert.ok(overflow <= 0, `overflow ${overflow}`);
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+await check('progress: weekly summary table after logging', async () => {
+  const { page, context } = await freshPage();
+  await page.goto(`${BASE}#workouts`);
+  await page.selectOption('#workout-activity', 'walk-brisk');
+  await page.fill('#workout-duration', '45');
+  await page.click('#workout-submit');
+  await page.waitForSelector('#workout-list .entry');
+  await page.click('.primary-nav a[data-route="progress"]');
+  await page.waitForSelector('#weekly-table');
+  const row = await page.textContent('#weekly-table tbody tr:first-child');
+  assert.match(row, /This week/);
+  assert.match(row, /1\s*45\s*0\s*0/);
+  assert.match(await page.textContent('#weekly-card'), /150 minutes of moderate activity/);
+  await context.close();
+});
+
+await check('settings: CSV downloads with headers and safe cells', async () => {
+  const { page, context } = await freshPage({ acceptDownloads: true });
+  await page.goto(`${BASE}#workouts`);
+  await page.selectOption('#workout-activity', 'yoga');
+  await page.fill('#workout-duration', '30');
+  await page.fill('#workout-notes', '=SUM(A1)');
+  await page.click('#workout-submit');
+  await page.waitForSelector('#workout-list .entry');
+  await page.click('.primary-nav a[data-route="settings"]');
+  for (const [kind, header] of [['workouts', 'date,type,name'], ['sets', 'date,session,exercise'], ['weights', 'date,weight_kg'], ['diary', 'date,meal,food']]) {
+    const [download] = await Promise.all([page.waitForEvent('download'), page.click(`[data-csv="${kind}"]`)]);
+    assert.match(download.suggestedFilename(), new RegExp(`^letsgetfit-${kind}-\\d{4}-\\d{2}-\\d{2}\\.csv$`));
+    const fs = await import('node:fs/promises');
+    const text = await fs.readFile(await download.path(), 'utf8');
+    assert.ok(text.replace('﻿', '').startsWith(header), `${kind}: ${text.slice(0, 40)}`);
+    if (kind === 'workouts') assert.match(text, /'=SUM\(A1\)/, 'formula neutralised');
+  }
+  await context.close();
+});
+
+await check('training: Phase 2 (v2) data upgrades and old workouts still show', async () => {
+  const { page, context } = await freshPage();
+  await page.evaluate(() => {
+    localStorage.setItem('letsgetfit.data', JSON.stringify({
+      schemaVersion: 2, preferences: { units: 'metric' }, profile: null,
+      workouts: [{ id: 'w', localDate: '2026-11-01', activityId: 'yoga', activityLabel: 'Yoga, hatha', durationMin: 30, createdAt: '2026-11-01T10:00:00.000Z' }],
+      weights: [], foods: [], diary: [{ id: 'd', localDate: '2026-11-01', meal: 'lunch', name: 'Apple', servingG: 100, per100g: { energy: 52 }, nutrients: { energy: 52 }, source: 'custom', createdAt: '2026-11-01T12:00:00.000Z' }],
+    }));
+  });
+  await page.reload();
+  await openWorkouts(page);
+  assert.match(await page.textContent('#workout-list'), /Yoga, hatha/);
+  const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('letsgetfit.data')));
+  assert.equal(stored.schemaVersion, 3);
+  assert.equal(stored.workouts[0].type, 'activity');
+  assert.equal(stored.diary.length, 1);
   await context.close();
 });
 

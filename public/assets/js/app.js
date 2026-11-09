@@ -6,9 +6,11 @@ import { initOverview } from './ui/overview.js';
 import { initWorkouts, initWeights } from './ui/logs.js';
 import { initSettings } from './ui/settings.js';
 import { initFood } from './ui/food.js';
+import { initTraining } from './ui/training.js';
+import { initProgress } from './ui/progress.js';
 import { $, $$, toast } from './ui/dom.js';
 
-export const APP_VERSION = '0.2.0';
+export const APP_VERSION = '0.3.0';
 const ROUTES = ['overview', 'food', 'workouts', 'progress', 'settings'];
 
 function showRoute(route, { focus }) {
@@ -41,7 +43,9 @@ function start() {
   $('#app-version').textContent = APP_VERSION;
   initOverview(store);
   initFood(store);
-  initWorkouts(store);
+  const training = initTraining(store);
+  initWorkouts(store, { onEditSession: (entry) => training.editSession(entry) });
+  initProgress(store);
   initWeights(store);
   initSettings(store);
 
