@@ -60,11 +60,50 @@ test('unversioned legacy data is migrated and rewritten', () => {
   const backend = memoryBackend();
   backend.setItem(STORAGE_KEY, JSON.stringify({ workouts: [{ id: 'a', localDate: '2026-01-01' }] }));
   const s = new Store({ backend });
-  assert.equal(s.data.schemaVersion, 1);
+  assert.equal(s.data.schemaVersion, SCHEMA_VERSION);
   assert.equal(s.workouts.length, 1);
   assert.deepEqual(s.weights, []);
-  assert.equal(JSON.parse(backend.getItem(STORAGE_KEY)).schemaVersion, 1);
-  assert.deepEqual(migrate(null), { schemaVersion: 1, preferences: { units: 'metric' }, profile: null, workouts: [], weights: [] });
+  assert.equal(JSON.parse(backend.getItem(STORAGE_KEY)).schemaVersion, SCHEMA_VERSION);
+  assert.deepEqual(migrate(null), { schemaVersion: 2, preferences: { units: 'metric' }, profile: null, workouts: [], weights: [], foods: [], diary: [] });
+});
+
+test('Phase 1 (v1) data stays readable after the v2 upgrade', () => {
+  const backend = memoryBackend();
+  const v1 = {
+    schemaVersion: 1,
+    preferences: { units: 'imperial' },
+    profile: { id: 'p1', ageYears: 40, heightCm: 175.3, weightKg: 79.8, sex: 'female', activityLevel: 'light', pregnantOrBreastfeeding: false },
+    workouts: [{ id: 'w1', localDate: '2026-11-01', activityId: 'yoga', durationMin: 30, createdAt: '2026-11-01T10:00:00.000Z' }],
+    weights: [{ id: 'k1', localDate: '2026-11-02', weightKg: 79.8, createdAt: '2026-11-02T07:00:00.000Z' }],
+  };
+  backend.setItem(STORAGE_KEY, JSON.stringify(v1));
+  const s = new Store({ backend });
+  assert.equal(s.data.schemaVersion, 2);
+  assert.equal(s.units, 'imperial');
+  assert.deepEqual(s.profile, v1.profile);
+  assert.deepEqual(s.workouts, v1.workouts);
+  assert.deepEqual(s.weights, v1.weights);
+  assert.deepEqual(s.foods, []);
+  assert.deepEqual(s.diary, []);
+  const saved = JSON.parse(backend.getItem(STORAGE_KEY));
+  assert.equal(saved.schemaVersion, 2);
+  assert.deepEqual(saved.workouts, v1.workouts);
+});
+
+test('diary entries and foods: add, filter by date, update, delete', () => {
+  const s = new Store({ backend: memoryBackend() });
+  const food = s.addFood({ source: 'custom', name: 'Porridge', per100g: { energy: 70 } });
+  const e1 = s.addDiaryEntry({ localDate: '2026-11-09', meal: 'breakfast', foodId: food.id, servingG: 250 });
+  s.addDiaryEntry({ localDate: '2026-11-08', meal: 'lunch', servingG: 100 });
+  assert.equal(s.diaryFor('2026-11-09').length, 1);
+  s.updateDiaryEntry(e1.id, { servingG: 300 });
+  assert.equal(s.diaryFor('2026-11-09')[0].servingG, 300);
+  // Deleting the library food leaves the diary entry alone.
+  s.deleteFood(food.id);
+  assert.equal(s.foods.length, 0);
+  assert.equal(s.diaryFor('2026-11-09').length, 1);
+  s.deleteDiaryEntry(e1.id);
+  assert.equal(s.diaryFor('2026-11-09').length, 0);
 });
 
 test('unit preference defaults to metric and persists', () => {

@@ -1,7 +1,8 @@
 // Versioned on-device storage.
 //
 // Everything is kept in one localStorage key as JSON:
-//   { schemaVersion, preferences, profile, workouts[], weights[] }
+//   { schemaVersion, preferences, profile, workouts[], weights[], foods[], diary[] }
+// v1 (Phase 1): profile, workouts, weights. v2 (Phase 2): adds the food library and diary.
 // Units are canonical metric (cm, kg, kcal). Entry dates are local "YYYY-MM-DD"; createdAt and
 // updatedAt are ISO 8601 UTC timestamps. Each record has a stable random ID so that a later
 // opt-in sync (Phase 4) can de-duplicate safely.
@@ -13,7 +14,7 @@
 import { nowUtcIso } from '../lib/dates.js';
 
 export const STORAGE_KEY = 'letsgetfit.data';
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 
 /** migrations[n] upgrades data from version n-1 to version n. */
 export const migrations = {
@@ -24,10 +25,16 @@ export const migrations = {
     workouts: Array.isArray(data?.workouts) ? data.workouts : [],
     weights: Array.isArray(data?.weights) ? data.weights : [],
   }),
+  2: (data) => ({
+    ...data,
+    schemaVersion: 2,
+    foods: Array.isArray(data?.foods) ? data.foods : [],
+    diary: Array.isArray(data?.diary) ? data.diary : [],
+  }),
 };
 
 export function emptyData() {
-  return { schemaVersion: SCHEMA_VERSION, preferences: { units: 'metric' }, profile: null, workouts: [], weights: [] };
+  return { schemaVersion: SCHEMA_VERSION, preferences: { units: 'metric' }, profile: null, workouts: [], weights: [], foods: [], diary: [] };
 }
 
 export function migrate(data) {
@@ -155,6 +162,20 @@ export class Store {
     return [...this.data.weights].sort(byDateDesc);
   }
 
+  /** Food library, most recently used first. */
+  get foods() {
+    return [...(this.data.foods ?? [])].sort((a, b) => (b.lastUsedAt ?? b.updatedAt ?? '').localeCompare(a.lastUsedAt ?? a.updatedAt ?? ''));
+  }
+
+  get diary() {
+    return [...(this.data.diary ?? [])];
+  }
+
+  /** Diary entries for one local date, in the order they were added. */
+  diaryFor(localDate) {
+    return (this.data.diary ?? []).filter((e) => e.localDate === localDate).sort((a, b) => (a.createdAt ?? '').localeCompare(b.createdAt ?? ''));
+  }
+
   saveProfile(profile) {
     const now = nowUtcIso();
     const existing = this.data.profile;
@@ -218,6 +239,27 @@ export class Store {
   }
   deleteWeight(id) {
     this.#remove('weights', id);
+  }
+
+  addFood(value) {
+    return this.#add('foods', value);
+  }
+  updateFood(id, value) {
+    return this.#update('foods', id, value);
+  }
+  /** Deleting a food never touches diary entries: they keep their own snapshot. */
+  deleteFood(id) {
+    this.#remove('foods', id);
+  }
+
+  addDiaryEntry(value) {
+    return this.#add('diary', value);
+  }
+  updateDiaryEntry(id, value) {
+    return this.#update('diary', id, value);
+  }
+  deleteDiaryEntry(id) {
+    this.#remove('diary', id);
   }
 
   /** Removes all LetsGetFit data from this device. */
