@@ -1,0 +1,87 @@
+name: Deploy to cPanel (FTPS)
+
+# Deploys public/ to the letsgetfit.site document root over encrypted FTP.
+#  - Automatically after the CI workflow passes on a push to main (only tested commits go live).
+#  - Manually from Actions > "Deploy to cPanel (FTPS)" > Run workflow, optionally choosing an
+#    older commit to roll back, or a dry run.
+# Secrets used: FTP_SERVER, FTP_USERNAME, FTP_PASSWORD, FTP_DIRECTORY.
+# Optional repository variables: FTP_PORT, FTP_VERIFY_CERT, SITE_URL.
+# See docs/DEPLOY-CPANEL.md. To pause deployments, disable this workflow in the Actions tab.
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Commit SHA, tag or branch to deploy. Use an older commit SHA to roll back.
+        required: false
+        default: main
+      dry_run:
+        description: Only list what would be uploaded; change nothing on the server.
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Upload to cPanel
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_branch == 'main')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: production
+      url: ${{ vars.SITE_URL || 'https://letsgetfit.site/' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # After CI: deploy exactly the commit CI tested. Manual run: the chosen ref.
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || inputs.ref }}
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Quick checks before upload
+        run: |
+          node --test "tests/unit/*.test.mjs"
+          node scripts/check-static.mjs
+
+      - name: Install lftp
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq lftp
+
+      - name: Upload public/ over FTPS
+        env:
+          FTP_SERVER: ${{ secrets.FTP_SERVER }}
+          FTP_USERNAME: ${{ secrets.FTP_USERNAME }}
+          FTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
+          FTP_DIRECTORY: ${{ secrets.FTP_DIRECTORY }}
+          FTP_PORT: ${{ vars.FTP_PORT }}
+          FTP_VERIFY_CERT: ${{ vars.FTP_VERIFY_CERT }}
+          DRY_RUN: ${{ inputs.dry_run && 'true' || 'false' }}
+        run: bash scripts/deploy-ftp.sh
+
+      - name: Check the live site
+        if: ${{ !inputs.dry_run }}
+        env:
+          SITE_URL: ${{ vars.SITE_URL || 'https://letsgetfit.site/' }}
+        run: |
+          echo "Deployed commit: $(git rev-parse --short=12 HEAD)"
+          if body="$(curl --fail --silent --show-error --location --max-time 20 "$SITE_URL")" && grep -q '<title>LetsGetFit</title>' <<<"$body"; then
+            echo "Live check passed: $SITE_URL returns the LetsGetFit page."
+          else
+            echo "::warning::Files were uploaded, but $SITE_URL did not return the LetsGetFit page. DNS, HTTPS or the document root may not be set up yet. See docs/DEPLOY-CPANEL.md."
+          fi

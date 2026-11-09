@@ -8,7 +8,7 @@ Guidance for anyone, human or AI, changing this repository.
 - Before editing, read `README.md`, `docs/STATUS.md` and `docs/ARCHITECTURE.md`, and check `git status`.
 - Run `npm test` before committing. Keep commits scoped, and update `docs/STATUS.md` when a phase's state changes.
 - Never commit secrets, real server paths, credentials or production config. Put examples with placeholders in `config/`.
-- Nothing deploys automatically. Do not add a deploy workflow unless the owner asks for one.
+- Pushing to `main` deploys to production. Once CI passes, `.github/workflows/deploy.yml` uploads `public/` over FTPS. Only push to `main` when it is ready to go live; use a branch and pull request otherwise.
 
 ## Code rules
 

@@ -50,7 +50,7 @@ npm run test:e2e           # browser smoke tests: forms, persistence, keyboard, 
 npm test                   # all of the above
 ```
 
-GitHub Actions runs all of these on every push and pull request (`.github/workflows/ci.yml`). It also uploads a `letsgetfit-public-<sha>.tar.gz` artifact for manual upload. CI does not deploy anything.
+GitHub Actions runs all of these on every push and pull request (`.github/workflows/ci.yml`). It also uploads a `letsgetfit-public-<sha>.tar.gz` artifact for manual upload. The FTP deploy tests run against a local FTPS server. They need `lftp` and Python with `pyftpdlib` and `pyOpenSSL`, and are skipped locally if those are missing.
 
 ## Project structure
 
@@ -59,7 +59,7 @@ public/            Web root: the only folder that gets deployed
   assets/js/lib/       Pure calculation and validation logic (unit-tested)
   assets/js/storage/   Versioned browser storage
   assets/js/ui/        Views and DOM helpers
-scripts/           Local server, static check, cPanel deploy script
+scripts/           Local server, static check, deploy scripts (FTPS and cPanel Git)
 tests/             unit/, deploy/, e2e/
 config/            Example server-local settings (placeholders only)
 docs/              Deployment, formulas, architecture, status, privacy
@@ -70,7 +70,11 @@ More detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Deployment
 
-See **[docs/DEPLOY-CPANEL.md](docs/DEPLOY-CPANEL.md)**. In short: clone the repository in cPanel **Git Version Control** outside the web root, and set the document root in `~/.config/letsgetfit/deploy.env`. Then use **Update from Remote** → **Deploy HEAD Commit**.
+See **[docs/DEPLOY-CPANEL.md](docs/DEPLOY-CPANEL.md)**.
+
+- **Active:** every push to `main` that passes CI is uploaded to cPanel over FTPS by `.github/workflows/deploy.yml`. It uses the repository secrets `FTP_SERVER`, `FTP_USERNAME`, `FTP_PASSWORD` and `FTP_DIRECTORY`. It can also be run by hand from the Actions tab, to redeploy, roll back to an older commit, or do a dry run.
+- **One-time server step:** create an empty `.letsgetfit-docroot` file in the letsgetfit.site document root. Deploys refuse to run without it.
+- **Alternative:** cPanel Git Version Control with `.cpanel.yml`.
 
 ## External services
 

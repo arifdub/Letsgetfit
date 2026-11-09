@@ -30,13 +30,24 @@ jobs:
       - name: Install Chromium for browser smoke tests
         run: npx playwright install --with-deps chromium
 
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install FTP test tools (lftp and a local FTPS test server)
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq lftp
+          python -m pip install --quiet pyftpdlib==2.2.0 pyopenssl==26.4.0
+
       - name: Formula and storage unit tests
         run: npm run test:unit
 
       - name: Static release check
         run: npm run check:static
 
-      - name: Deploy script tests
+      - name: Deploy script tests (cPanel Git and FTPS)
+        env:
+          LGF_TEST_PYTHON: python
         run: npm run test:deploy
 
       - name: Browser smoke tests

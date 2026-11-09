@@ -1,10 +1,11 @@
 # Deploying LetsGetFit to cPanel
 
-This guide covers deploying letsgetfit.site from GitHub to ordinary shared cPanel hosting. Nothing in the repository deploys automatically. You pull and deploy from cPanel when you choose to.
+This guide covers deploying letsgetfit.site from GitHub to ordinary shared cPanel hosting.
 
 - **Repository:** `https://github.com/arifdub/Letsgetfit` (GitHub shows the name as `Letsgetfit`)
 - **Branch to deploy:** `main`
-- **Primary strategy:** cPanel Git Version Control clones the repo outside the web root. **Deploy HEAD Commit** runs `.cpanel.yml`, which runs `scripts/deploy.sh`. That script copies only `public/` into the document root.
+- **Active method: GitHub Actions over FTPS** (`.github/workflows/deploy.yml`). Every push to `main` runs CI. When CI passes, the deploy workflow uploads `public/` to the document root over encrypted FTP, using the FTP secrets saved in the repository. See [Automatic deployment with GitHub Actions (FTPS)](#automatic-deployment-with-github-actions-ftps).
+- **Alternative: cPanel Git Version Control.** cPanel clones the repo outside the web root, and **Deploy HEAD Commit** runs `.cpanel.yml` → `scripts/deploy.sh`. It is kept for hosts or situations where FTP is not wanted. Use **one** method at a time, so the two do not overwrite each other in confusing ways.
 - **Build step:** none. Phase 1 is plain HTML, CSS and JavaScript modules, so a clean checkout is deployable as-is. CI also produces a `letsgetfit-public-<sha>.tar.gz` artifact for the manual-upload fallback.
 
 > cPanel menus differ slightly between hosts and themes. If a name below does not match, use your host's search box in cPanel. Ask your host if a feature (Git Version Control, Terminal, SSH) is missing.
@@ -20,7 +21,8 @@ This guide covers deploying letsgetfit.site from GitHub to ordinary shared cPane
 | letsgetfit.site added to the account | **Domains** | Note the exact **Document Root** it shows. Do not assume `public_html`. Addon domains often use `/home/USER/letsgetfit.site`. |
 | DNS pointing to the host | Your registrar, or **Zone Editor** if the host runs DNS | See [DNS](#dns). Keep existing email records. |
 | HTTPS | **SSL/TLS Status** (AutoSSL) or your host's certificate tool | Run AutoSSL after DNS resolves. `.htaccess` redirects HTTP to HTTPS, so get the certificate first. |
-| Git Version Control | **Git Version Control** | Preferred. If missing, use the [manual upload fallback](#fallback-manual-upload). |
+| FTP account | **FTP Accounts** | Used by the GitHub Actions FTPS deploy. A dedicated account limited to the document root is safest. |
+| Git Version Control (alternative) | **Git Version Control** | Only for the cPanel Git method. If neither works, use the [manual upload fallback](#fallback-manual-upload). |
 | Terminal or SSH (optional) | **Terminal**, or **SSH Access** | Makes the one-off setup easier. Everything can also be done in **File Manager**. |
 
 No PHP, database or secrets are needed for Phase 1.
@@ -52,7 +54,81 @@ No PHP, database or secrets are needed for Phase 1.
 
 ---
 
-## Preferred deployment flow (Phase 1)
+## Automatic deployment with GitHub Actions (FTPS)
+
+### How it works
+
+1. You push to `main`, or merge a pull request into it.
+2. The **CI** workflow runs every test.
+3. Only if CI passes, **Deploy to cPanel (FTPS)** starts. It checks out the exact commit CI tested and runs the quick checks again. It then runs `scripts/deploy-ftp.sh`, which:
+   - connects with **explicit FTPS (TLS)** and refuses plain FTP, so the password is never sent in clear text;
+   - checks the server's certificate by default;
+   - changes into `FTP_DIRECTORY` and **stops before uploading anything** unless the folder contains the marker file `.letsgetfit-docroot`;
+   - uploads only the contents of `public/` and uploads `index.html` last;
+   - **never deletes** anything on the server, so `.well-known`, `cgi-bin` and other files are left alone.
+4. It then checks that the site URL returns the LetsGetFit page. If DNS or HTTPS is not ready yet, this shows a warning rather than failing.
+
+The password reaches `lftp` through an environment variable, never on a command line. GitHub masks secret values in logs.
+
+### Secrets and variables
+
+Repository → **Settings → Secrets and variables → Actions**.
+
+**Secrets** (required; the names must match exactly):
+
+| Secret | What to put in it |
+|---|---|
+| `FTP_SERVER` | The FTP host name, for example `ftp.letsgetfit.site`. If your host's certificate does not cover that name, use the server's own host name, for example `server123.yourhost.com` (shown in cPanel under **FTP Accounts → Configure FTP Client**). An `ftp://` prefix or `:21` suffix is accepted. |
+| `FTP_USERNAME` | The FTP account, for example `deploy@letsgetfit.site` |
+| `FTP_PASSWORD` | Its password |
+| `FTP_DIRECTORY` | The letsgetfit.site document root **as seen when logged in by FTP**. See below. |
+
+If a secret is missing or misnamed, the run stops with `missing setting(s): …` naming it.
+
+**Variables** (optional, on the **Variables** tab):
+
+| Variable | Default | Use |
+|---|---|---|
+| `FTP_PORT` | `21` | Only if your host uses another port for explicit FTPS |
+| `FTP_VERIFY_CERT` | `true` | Set to `false` only if the deploy fails with a certificate error and you cannot use a host name the certificate covers. The connection stays encrypted, but the server's identity is not checked. |
+| `SITE_URL` | `https://letsgetfit.site/` | The address the live check visits |
+
+### Choosing FTP_DIRECTORY
+
+FTP paths are relative to where the FTP account lands when it logs in:
+
+- **Main cPanel account** (lands in `/home/CPANELUSER`): use the document root from cPanel → **Domains** without the `/home/CPANELUSER/` part, for example `letsgetfit.site` or `public_html`.
+- **Recommended: a dedicated FTP account** limited to the site. Go to cPanel → **FTP Accounts** → **Add FTP Account**, set **Directory** to the letsgetfit.site document root, and use a long generated password. That account lands inside the document root, so `FTP_DIRECTORY` is `/`. It cannot touch the rest of your hosting if the password ever leaks.
+
+### One-time setup on the server
+
+1. Make sure the document root exists (cPanel → **Domains**).
+2. Create the marker file `.letsgetfit-docroot` in it. In **File Manager**, turn on **Settings → Show Hidden Files**, open the document root, and choose **+ File**. The deploy refuses to run without it, which protects against a wrong `FTP_DIRECTORY`.
+3. Get the HTTPS certificate working before the first deploy (see [DNS](#dns)). `.htaccess` redirects every visit to HTTPS.
+
+### Running it
+
+- **Automatically:** push to `main`. Watch it under **Actions → Deploy to cPanel (FTPS)**.
+- **By hand:** **Actions → Deploy to cPanel (FTPS) → Run workflow**. Leave `ref` as `main` to redeploy the latest version. Tick **dry run** to list what would be uploaded without changing anything.
+- **Roll back:** run it by hand with `ref` set to the SHA of a known-good commit (from the commit list on GitHub). Then fix or revert `main`, because the next push to `main` deploys again.
+- **Pause deployments:** go to **Actions → Deploy to cPanel (FTPS) → ⋯ → Disable workflow**. CI keeps running.
+- **Require approval (optional):** the job uses a GitHub environment called `production`. Under **Settings → Environments → production**, you can add yourself as a required reviewer, so each deploy waits for your approval.
+
+### If it fails
+
+| Message | Fix |
+|---|---|
+| `missing setting(s): …` | Add or rename the listed secrets exactly as above. |
+| `Login incorrect` / `530` | Check `FTP_USERNAME` (cPanel FTP accounts include `@domain`) and `FTP_PASSWORD`. |
+| Certificate or `verify` errors | Set `FTP_SERVER` to the server host name the certificate covers. As a last resort, set the variable `FTP_VERIFY_CERT=false`. |
+| `marker file is missing` or `No such file` | Create `.letsgetfit-docroot` in the document root and check `FTP_DIRECTORY` points to that folder. |
+| Connection timed out | The host may block FTP from GitHub's IP ranges or need FTPS turned on. Ask your host, or use the cPanel Git method below. |
+
+Because uploads never delete, a file removed from `public/` in a later release stays on the server until you delete it in File Manager.
+
+---
+
+## Alternative: cPanel Git Version Control
 
 ### 1. Add the domain and find its document root
 
@@ -150,7 +226,7 @@ There is no build step in Phase 1, so cPanel deploys straight from the clean che
 
 cPanel only deploys when the checkout has a committed `.cpanel.yml` and no uncommitted local changes. Never edit files inside `~/repositories/letsgetfit` on the server.
 
-**Automatic deploys** (a GitHub webhook or Action that triggers cPanel) are a later opt-in and are not set up. Until you decide otherwise, every release is the two clicks above.
+If you use this method, disable the FTPS deploy workflow (see above) so only one method writes to the document root.
 
 ### Fallback: manual upload
 
@@ -191,8 +267,8 @@ These are run by hand in **Terminal** after a deploy that needs them, following 
 
 Use whichever is quickest:
 
-1. **Revert on GitHub (preferred).** Revert the bad commit on `main`, then **Update from Remote** and **Deploy HEAD Commit**.
-2. **Restore the previous files.** Every deploy backs up what it overwrote:
+1. **Revert on GitHub (preferred).** Revert the bad commit on `main`. With the FTPS workflow it deploys automatically after CI passes. With cPanel Git, click **Update from Remote** and **Deploy HEAD Commit**. Or run the deploy workflow by hand with a known-good `ref`.
+2. **Restore the previous files (cPanel Git method only).** Every `scripts/deploy.sh` run backs up what it overwrote:
 
    ```bash
    ls -1 ~/letsgetfit-backups/

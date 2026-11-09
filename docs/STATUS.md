@@ -2,7 +2,7 @@
 
 | Phase | Scope | Status |
 |---|---|---|
-| 1 | Calculator and local tracking (static) | **Complete**: implemented and tested. Not yet deployed. |
+| 1 | Calculator and local tracking (static) | **Complete**: implemented and tested. Automatic FTPS deploy to cPanel is configured; the first live deploy depends on the server setup in docs/DEPLOY-CPANEL.md. |
 | 2 | Food diary and nutrient data (manual diary, PHP FoodData Central adapter, Open Food Facts evaluation) | Not started. Next. |
 | 3 | Workouts library, routines and progress trends | Not started |
 | 4 | Optional accounts and cloud sync | Not started |
@@ -27,7 +27,7 @@
 ### Open items before public launch
 
 - Manually tick off the primary sources marked "needs manual check" in `docs/FORMULAS.md`, and review the 2024 Adult Compendium MET values.
-- Deploy to cPanel by following `docs/DEPLOY-CPANEL.md`, then run its verification checklist on the live site.
+- Create `.letsgetfit-docroot` in the document root, confirm the FTP secrets, check the first **Deploy to cPanel (FTPS)** run, then work through the verification checklist in `docs/DEPLOY-CPANEL.md` on the live site.
 - Run a screen reader pass (VoiceOver on iOS, TalkBack on Android). The automated checks do not cover this.
 
 ## Phase 2 plan (summary)

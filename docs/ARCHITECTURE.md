@@ -19,7 +19,7 @@ public/                 Web root contents — the only folder deployed
     lib/                Pure logic: units, energy, bmi, nutrition, activities, validate, dates
     storage/store.js    Versioned localStorage with migrations
     ui/                 DOM: overview, logs (workouts + weight), settings, methods, dom helpers
-scripts/                serve.mjs (local server), check-static.mjs, deploy.sh (cPanel)
+scripts/                serve.mjs (local server), check-static.mjs, deploy-ftp.sh (GitHub Actions FTPS), deploy.sh (cPanel Git)
 tests/unit|deploy|e2e   Node test runner and Playwright smoke tests
 config/                 Example server-local settings (placeholders only)
 docs/                   This file, formulas, deployment, status, privacy
@@ -51,6 +51,7 @@ config/*.example.php    Templates; real config lives in ~/.config/letsgetfit/ on
 | Strict Content Security Policy, no inline scripts or styles | Limits damage from any injection. `scripts/check-static.mjs` enforces it. |
 | User text written with `textContent` only | Notes cannot inject HTML. |
 | Deploy copies `public/` only, never deletes, needs a marker file | See `docs/DEPLOY-CPANEL.md`. Protects host-managed files and avoids deploying to the wrong folder. |
+| FTPS deploy with `lftp` in a repo script, not a third-party Action | The FTP password is only handed to tools we control and test. TLS is required and the certificate is verified by default. Only commits that passed CI are deployed. |
 | Irish English, `lang="en-IE"`, `Intl` formatting with `en-IE` | Matches the audience. Dates show as "Mon 9 Nov 2026". |
 | System font stack, no web fonts | Fast, private (no third-party requests) and fits the CSP. |
 
