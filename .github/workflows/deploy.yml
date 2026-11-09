@@ -77,6 +77,8 @@ jobs:
           FTP_PORT: ${{ vars.FTP_PORT }}
           FTP_VERIFY_CERT: ${{ vars.FTP_VERIFY_CERT }}
           DRY_RUN: ${{ inputs.dry_run && 'true' || 'false' }}
+          # Used to prove which FTP folder is the live site's document root.
+          SITE_URL: ${{ vars.SITE_URL || 'https://letsgetfit.site/' }}
         run: bash scripts/deploy-ftp.sh
 
       - name: Check the live site

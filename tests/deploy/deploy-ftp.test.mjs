@@ -4,11 +4,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, existsSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, existsSync, readFileSync, rmSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import net from 'node:net';
+import http from 'node:http';
+import { readFile } from 'node:fs/promises';
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const SCRIPT = path.join(REPO, 'scripts', 'deploy-ftp.sh');
@@ -30,10 +32,27 @@ function freePort() {
   });
 }
 
+// Serves the site folder over HTTP, like the live site, so the probe check can be tested.
+async function startWeb(docroot) {
+  const server = http.createServer(async (req, res) => {
+    try {
+      const body = await readFile(path.join(docroot, decodeURIComponent(req.url.split('?')[0])));
+      res.writeHead(200);
+      res.end(body);
+    } catch {
+      res.writeHead(404);
+      res.end('not found');
+    }
+  });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  return { url: `http://127.0.0.1:${server.address().port}/`, close: () => server.close() };
+}
+
 async function startFtp({ tls = true } = {}) {
   const base = mkdtempSync(path.join(tmpdir(), 'lgf-ftp-'));
   const root = path.join(base, 'home');
-  const docroot = path.join(root, 'letsgetfit.site');
+  // Eco Web Hosting layout: /domains/<domain>/public_html
+  const docroot = path.join(root, 'domains', 'letsgetfit.site', 'public_html');
   mkdirSync(path.join(docroot, '.well-known', 'acme-challenge'), { recursive: true });
   writeFileSync(path.join(docroot, '.well-known', 'acme-challenge', 'token'), 'keep-me');
   writeFileSync(path.join(docroot, 'unrelated.txt'), 'host file');
@@ -58,13 +77,17 @@ async function startFtp({ tls = true } = {}) {
   const fingerprint = tls
     ? spawnSync('openssl', ['x509', '-in', cert, '-noout', '-fingerprint', '-sha1'], { encoding: 'utf8' }).stdout.trim().split('=')[1]
     : null;
+  const web = await startWeb(docroot);
   return {
     base,
+    root,
     docroot,
     port,
     fingerprint,
+    siteUrl: web.url,
     stop() {
       proc.kill();
+      web.close();
       rmSync(base, { recursive: true, force: true });
     },
   };
@@ -81,14 +104,19 @@ function deploy(env) {
   });
 }
 
-const creds = (port, extra = {}) => ({
-  FTP_SERVER: `ftp://127.0.0.1:${port}`,
+// Pass the ftp handle (preferred) or a bare port.
+const creds = (ftp, extra = {}) => ({
+  FTP_SERVER: `ftp://127.0.0.1:${typeof ftp === 'number' ? ftp : ftp.port}`,
   FTP_USERNAME: 'deployer',
   FTP_PASSWORD: 'p@ss,w0rd "x"',
-  FTP_DIRECTORY: 'letsgetfit.site',
+  FTP_DIRECTORY: 'domains/letsgetfit.site/public_html',
   FTP_VERIFY_CERT: 'false', // self-signed test certificate
+  SITE_URL: typeof ftp === 'number' ? 'http://127.0.0.1:9/' : ftp.siteUrl,
+  DEPLOY_DOMAIN: 'letsgetfit.site',
   ...extra,
 });
+
+const probeFilesLeft = (dir) => readdirSync(dir).filter((f) => f.startsWith('letsgetfit-probe-'));
 
 test('fails clearly when settings are missing, without connecting', async () => {
   const r = await deploy({ FTP_SERVER: 'example.invalid' });
@@ -107,7 +135,7 @@ test('uploads only public/ over FTPS and preserves host files', { skip }, async 
   const ftp = await startFtp();
   t.after(() => ftp.stop());
   writeFileSync(path.join(ftp.docroot, '.letsgetfit-docroot'), '');
-  const r = await deploy(creds(ftp.port));
+  const r = await deploy(creds(ftp));
   assert.equal(r.status, 0, r.stderr + r.stdout);
   for (const f of ['index.html', '404.html', '.htaccess', 'favicon.svg', 'robots.txt', 'assets/css/app.css', 'assets/js/app.js', 'assets/js/lib/energy.js']) {
     assert.ok(existsSync(path.join(ftp.docroot, f)), `${f} should be uploaded`);
@@ -121,24 +149,44 @@ test('uploads only public/ over FTPS and preserves host files', { skip }, async 
   assert.ok(!r.stdout.includes('p@ss') && !r.stderr.includes('p@ss'), 'password must not be printed');
 
   // A second run (an update) also succeeds.
-  const again = await deploy(creds(ftp.port));
+  const again = await deploy(creds(ftp));
   assert.equal(again.status, 0, again.stderr);
 });
 
-test('stops before uploading when the marker file is missing', { skip }, async (t) => {
+test('finds and proves the site folder when the marker is missing, then creates it', { skip }, async (t) => {
   const ftp = await startFtp();
   t.after(() => ftp.stop());
-  const r = await deploy(creds(ftp.port));
+  // FTP_DIR points at the home folder, as a first guess often does.
+  const r = await deploy(creds(ftp, { FTP_DIRECTORY: '/' }));
+  assert.equal(r.status, 0, r.stderr + r.stdout);
+  assert.match(r.stdout, /is the live document root/);
+  assert.ok(existsSync(path.join(ftp.docroot, 'index.html')));
+  assert.ok(existsSync(path.join(ftp.docroot, '.letsgetfit-docroot')), 'marker should be created');
+  assert.ok(!existsSync(path.join(ftp.root, 'index.html')), 'nothing uploaded to the home folder');
+  assert.deepEqual(probeFilesLeft(ftp.docroot), []);
+  assert.deepEqual(probeFilesLeft(ftp.root), []);
+  // The next run uses the marker straight away.
+  const again = await deploy(creds(ftp));
+  assert.equal(again.status, 0, again.stderr);
+  assert.match(again.stdout, /found \.letsgetfit-docroot/);
+});
+
+test('uploads nothing when no folder is served by the site', { skip }, async (t) => {
+  const ftp = await startFtp();
+  t.after(() => ftp.stop());
+  const r = await deploy(creds(ftp, { SITE_URL: 'http://127.0.0.1:9/' }));
   assert.notEqual(r.status, 0);
-  assert.match(r.stderr, /marker file is missing/);
+  assert.match(r.stderr, /could not find the folder that serves/);
   assert.ok(!existsSync(path.join(ftp.docroot, 'index.html')));
-  assert.ok(!existsSync(path.join(ftp.docroot, 'assets')));
+  assert.ok(!existsSync(path.join(ftp.docroot, '.letsgetfit-docroot')));
+  assert.deepEqual(probeFilesLeft(ftp.docroot), []);
+  assert.deepEqual(probeFilesLeft(ftp.root), []);
 });
 
 test('stops when the directory does not exist', { skip }, async (t) => {
   const ftp = await startFtp();
   t.after(() => ftp.stop());
-  const r = await deploy(creds(ftp.port, { FTP_DIRECTORY: 'no-such-folder' }));
+  const r = await deploy(creds(ftp, { FTP_DIRECTORY: 'no-such-folder', SITE_URL: 'http://127.0.0.1:9/' }));
   assert.notEqual(r.status, 0);
 });
 
@@ -146,7 +194,7 @@ test('dry run changes nothing', { skip }, async (t) => {
   const ftp = await startFtp();
   t.after(() => ftp.stop());
   writeFileSync(path.join(ftp.docroot, '.letsgetfit-docroot'), '');
-  const r = await deploy(creds(ftp.port, { DRY_RUN: 'true' }));
+  const r = await deploy(creds(ftp, { DRY_RUN: 'true' }));
   assert.equal(r.status, 0, r.stderr);
   assert.ok(!existsSync(path.join(ftp.docroot, 'index.html')));
   assert.ok(!existsSync(path.join(ftp.docroot, 'assets')));
@@ -156,7 +204,7 @@ test('refuses a server without TLS (plain FTP)', { skip }, async (t) => {
   const ftp = await startFtp({ tls: false });
   t.after(() => ftp.stop());
   writeFileSync(path.join(ftp.docroot, '.letsgetfit-docroot'), '');
-  const r = await deploy(creds(ftp.port));
+  const r = await deploy(creds(ftp));
   assert.notEqual(r.status, 0);
   assert.ok(!existsSync(path.join(ftp.docroot, 'index.html')));
 });
@@ -165,7 +213,7 @@ test('verifies the certificate by default (self-signed is rejected)', { skip }, 
   const ftp = await startFtp();
   t.after(() => ftp.stop());
   writeFileSync(path.join(ftp.docroot, '.letsgetfit-docroot'), '');
-  const r = await deploy(creds(ftp.port, { FTP_VERIFY_CERT: '' }));
+  const r = await deploy(creds(ftp, { FTP_VERIFY_CERT: '' }));
   assert.notEqual(r.status, 0);
   assert.ok(!existsSync(path.join(ftp.docroot, 'index.html')));
 });
@@ -174,7 +222,7 @@ test('a pinned certificate fingerprint is trusted while verification stays on', 
   const ftp = await startFtp();
   t.after(() => ftp.stop());
   writeFileSync(path.join(ftp.docroot, '.letsgetfit-docroot'), '');
-  const r = await deploy(creds(ftp.port, { FTP_VERIFY_CERT: '', FTP_CERT_FINGERPRINT: ftp.fingerprint.toLowerCase() }));
+  const r = await deploy(creds(ftp, { FTP_VERIFY_CERT: '', FTP_CERT_FINGERPRINT: ftp.fingerprint.toLowerCase() }));
   assert.equal(r.status, 0, r.stderr + r.stdout);
   assert.ok(existsSync(path.join(ftp.docroot, 'index.html')));
 });
@@ -184,7 +232,7 @@ test('a different pinned fingerprint is rejected', { skip }, async (t) => {
   t.after(() => ftp.stop());
   writeFileSync(path.join(ftp.docroot, '.letsgetfit-docroot'), '');
   const wrong = ftp.fingerprint.startsWith('00') ? `11${ftp.fingerprint.slice(2)}` : `00${ftp.fingerprint.slice(2)}`;
-  const r = await deploy(creds(ftp.port, { FTP_VERIFY_CERT: '', FTP_CERT_FINGERPRINT: wrong }));
+  const r = await deploy(creds(ftp, { FTP_VERIFY_CERT: '', FTP_CERT_FINGERPRINT: wrong }));
   assert.notEqual(r.status, 0);
   assert.ok(!existsSync(path.join(ftp.docroot, 'index.html')));
 });

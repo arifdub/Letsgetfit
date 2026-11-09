@@ -63,7 +63,7 @@ No PHP, database or secrets are needed for Phase 1.
 3. Only if CI passes, **Deploy to cPanel (FTPS)** starts. It checks out the exact commit CI tested and runs the quick checks again. It then runs `scripts/deploy-ftp.sh`, which:
    - connects with **explicit FTPS (TLS)** and refuses plain FTP, so the password is never sent in clear text;
    - checks the server's certificate by default;
-   - changes into `FTP_DIRECTORY` and **stops before uploading anything** unless the folder contains the marker file `.letsgetfit-docroot`;
+   - only uploads into a folder **proven** to be the live site's document root. That folder either already holds the marker file `.letsgetfit-docroot`, or the script finds it. To search, it uploads a random probe file to `FTP_DIR` and to common locations (such as `public_html` and `/domains/letsgetfit.site/public_html`). A folder counts only if `https://letsgetfit.site/<probe>` returns that exact file. Probe files are deleted straight away, and the proven folder gets the marker so later deploys skip the search. If no folder is proven, nothing is uploaded;
    - uploads only the contents of `public/` and uploads `index.html` last;
    - **never deletes** anything on the server, so `.well-known`, `cgi-bin` and other files are left alone.
 4. It then checks that the site URL returns the LetsGetFit page. If DNS or HTTPS is not ready yet, this shows a warning rather than failing.
@@ -114,12 +114,12 @@ So for Eco:
 - set `FTP_DIR` to `/domains/letsgetfit.site/public_html`, or to `/` if the FTP account's directory is already that folder; and
 - create `.letsgetfit-docroot` inside that `public_html` folder, using the control panel's File Manager or an FTP client such as FileZilla with hidden files shown.
 
-If `FTP_DIR` points anywhere else, the deploy stops with `550 … .letsgetfit-docroot: No such file or directory` and uploads nothing.
+If `FTP_DIR` points elsewhere, the deploy searches the usual locations, including `/domains/letsgetfit.site/public_html`. It uploads only to the folder that the live site is shown to serve.
 
 ### One-time setup on the server
 
 1. Make sure the document root exists (cPanel → **Domains**).
-2. Create the marker file `.letsgetfit-docroot` in it. In **File Manager**, turn on **Settings → Show Hidden Files**, open the document root, and choose **+ File**. The deploy refuses to run without it, which protects against a wrong `FTP_DIRECTORY`.
+2. Optional: create the marker file `.letsgetfit-docroot` in it. In **File Manager**, turn on **Settings → Show Hidden Files**, open the document root, and choose **+ File**. If you skip this, the first deploy finds and proves the folder itself and then creates the marker.
 3. Get the HTTPS certificate working before the first deploy (see [DNS](#dns)). `.htaccess` redirects every visit to HTTPS.
 
 ### Running it
@@ -137,7 +137,8 @@ If `FTP_DIR` points anywhere else, the deploy stops with `550 … .letsgetfit-do
 | `missing setting(s): …` | Add or rename the listed secrets exactly as above. |
 | `Login incorrect` / `530` | Check `FTP_USERNAME` (cPanel FTP accounts include `@domain`) and `FTP_PASSWORD`. |
 | `Certificate verification: The certificate is NOT trusted` | See [Certificate errors](#certificate-errors). |
-| `marker file is missing` or `No such file` | Create `.letsgetfit-docroot` in the document root and check `FTP_DIRECTORY` points to that folder. |
+| `could not find the folder that serves https://letsgetfit.site/` | The domain may not point at this hosting account yet, or HTTPS may not be working, or the site folder is in an unusual place. Check DNS, then set `FTP_DIR` to the site's `public_html` folder. |
+| `could not log in over FTPS` | Check `FTP_SERVER`, `FTP_USERNAME` and `FTP_PASSWORD`, and that FTP is unlocked for the account. |
 | Connection timed out | The host may block FTP from GitHub's IP ranges or need FTPS turned on. Ask your host, or use the cPanel Git method below. |
 
 Because uploads never delete, a file removed from `public/` in a later release stays on the server until you delete it in File Manager.

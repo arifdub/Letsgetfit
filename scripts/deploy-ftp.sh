@@ -19,12 +19,14 @@
 #   FTP_VERIFY_CERT  "true" (default) or "false" — last resort only; see docs/DEPLOY-CPANEL.md
 #   DEPLOY_SOURCE    folder to upload, default <repo>/public
 #   DRY_RUN          "true" to list what would be uploaded without changing anything
+#   SITE_URL         live address, default https://letsgetfit.site/ (used to prove the folder)
 #
 # Safety rules (same as scripts/deploy.sh):
 #   - Always encrypted (explicit FTPS). Plain FTP is refused, so the password never travels
 #     in clear text.
-#   - Stops before uploading anything unless the target folder contains the marker file
-#     .letsgetfit-docroot that you create once in the real document root.
+#   - Only uploads into a folder proven to be the document root of SITE_URL: either it holds
+#     the marker file .letsgetfit-docroot, or a random probe file uploaded there is served
+#     back by the live site. The proven folder then gets the marker for next time.
 #   - Uploads only the contents of public/. Never deletes anything on the server, so
 #     .well-known, cgi-bin and other host files are left alone.
 #   - Uploads index.html last, so the new page never loads before its assets exist.
@@ -104,12 +106,19 @@ for forbidden in .git .env node_modules config; do
   [ ! -e "$SOURCE/$forbidden" ] || fail "public/$forbidden must not be deployed."
 done
 
-info "uploading $(find "$SOURCE" -type f | wc -l | tr -d ' ') file(s) from public/ to $host:$port, folder \"$dir\"."
+SITE_URL="${SITE_URL:-https://letsgetfit.site/}"
+SITE_URL="${SITE_URL%/}/"
+[[ "$SITE_URL" =~ ^https?://[A-Za-z0-9.:-]+/$ ]] || fail "SITE_URL must look like https://letsgetfit.site/"
+domain="${DEPLOY_DOMAIN:-$(printf '%s' "$SITE_URL" | sed -E 's#^https?://([^/:]+).*#\1#')}"
+[[ "$domain" =~ ^[A-Za-z0-9.-]+$ ]] || fail "could not work out the domain from SITE_URL."
 
 # The password is passed through the environment (LFTP_PASSWORD), never on the command line.
 export LFTP_PASSWORD="$FTP_PASSWORD"
-lftp_status=0
-lftp <<LFTP || lftp_status=$?
+
+# Run lftp commands (one per argument) on a fresh FTPS connection.
+run_lftp() {
+  {
+    cat <<LFTP
 set cmd:fail-exit yes
 set net:timeout 30
 set net:max-retries 3
@@ -124,15 +133,100 @@ $pin_cmd
 set ftp:passive-mode yes
 set xfer:clobber yes
 open --env-password -u "$FTP_USERNAME" -p $port "ftp://$host"
-cd "$dir"
-cls -1a "$MARKER"
-mirror --reverse --no-perms --parallel=2 --verbose=1 $dry --exclude-glob .well-known/ --exclude-glob .git/ --exclude '^index\.html$' "$SOURCE" .
-$index_cmd
-bye
 LFTP
+    printf '%s\n' "$@"
+    echo bye
+  } | lftp
+}
+
+has_marker() {
+  run_lftp "cd \"$1\"" "cls -1a \"$MARKER\"" >/dev/null 2>&1
+}
+
+# Upload a random file into a folder and check the live site serves it back. This proves the
+# folder is the document root of SITE_URL, so we can never deploy into another site's folder.
+probe_folder() {
+  local folder="$1" token name tmp body ok=1
+  token="$(od -An -tx1 -N16 /dev/urandom | tr -d ' \n')"
+  name="letsgetfit-probe-$token.txt"
+  tmp="$(mktemp)"
+  printf '%s' "$token" > "$tmp"
+  if run_lftp "cd \"$folder\"" "put \"$tmp\" -o \"$name\"" >/dev/null 2>&1; then
+    for attempt in 1 2 3; do
+      body="$(curl --silent --location --max-time 15 "$SITE_URL$name" || true)"
+      if [ "$body" = "$token" ]; then
+        ok=0
+        break
+      fi
+      sleep 2
+    done
+    run_lftp "cd \"$folder\"" "rm \"$name\"" >/dev/null 2>&1 || echo "::warning::could not remove the probe file $name; delete it in File Manager."
+  fi
+  rm -f "$tmp"
+  return $ok
+}
+
+# ---- Connect once to surface login, TLS or certificate problems straight away ----
+if ! run_lftp "pwd" >/dev/null; then
+  fail "could not log in over FTPS (see the lftp message above). Check FTP_SERVER, FTP_USERNAME and FTP_PASSWORD. If it says the certificate is not trusted, see 'Certificate errors' in docs/DEPLOY-CPANEL.md."
+fi
+info "logged in over FTPS."
+
+# ---- Find the document root ----
+target=""
+if has_marker "$dir"; then
+  target="$dir"
+  info "found $MARKER in the configured folder."
+elif [ -n "$dry" ]; then
+  fail "dry run: $MARKER was not found in the configured folder, and a dry run does not search for the site folder. Run a normal deploy once, or create the marker."
+else
+  info "$MARKER not found in the configured folder; looking for the folder that serves $SITE_URL."
+  candidates=()
+  add_candidate() {
+    local c="$1" existing
+    c="$(printf '%s' "$c" | sed -E 's#/+#/#g')"
+    [ -n "$c" ] || return 0
+    for existing in "${candidates[@]}"; do [ "$existing" = "$c" ] && return 0; done
+    candidates+=("$c")
+  }
+  add_candidate "$dir"
+  add_candidate "$dir/public_html"
+  add_candidate "/domains/$domain/public_html"
+  add_candidate "domains/$domain/public_html"
+  add_candidate "$dir/domains/$domain/public_html"
+  add_candidate "/$domain/public_html"
+  add_candidate "$domain"
+  add_candidate "public_html"
+  add_candidate "/public_html"
+  add_candidate "/"
+  n=0
+  for candidate in "${candidates[@]}"; do
+    n=$((n + 1))
+    if probe_folder "$candidate"; then
+      target="$candidate"
+      info "location $n of ${#candidates[@]} is the live document root of $SITE_URL (proved with a probe file)."
+      break
+    fi
+    info "location $n of ${#candidates[@]}: not the live site folder."
+  done
+  [ -n "$target" ] || fail "could not find the folder that serves $SITE_URL. Check that the domain points at this hosting account and that FTP_DIR is the site's public_html folder (on Eco Web Hosting: /domains/$domain/public_html)."
+  # Remember it for next time.
+  empty="$(mktemp)"
+  run_lftp "cd \"$target\"" "put \"$empty\" -o \"$MARKER\"" >/dev/null 2>&1 || echo "::warning::could not create $MARKER; the next deploy will search again."
+  rm -f "$empty"
+  if [ "$target" != "$dir" ]; then
+    echo "::notice::The site folder differs from the FTP_DIR secret. Set FTP_DIR to the folder for location $n (see the deploy guide) to skip the search next time."
+  fi
+fi
+
+info "uploading $(find "$SOURCE" -type f | wc -l | tr -d ' ') file(s) from public/ to $host:$port."
+lftp_status=0
+run_lftp "cd \"$target\"" \
+  "mirror --reverse --no-perms --parallel=2 --verbose=1 $dry --exclude-glob .well-known/ --exclude-glob .git/ --exclude '^index\\.html\$' \"$SOURCE\" ." \
+  "$index_cmd" || lftp_status=$?
 unset LFTP_PASSWORD
 
 if [ "$lftp_status" -ne 0 ]; then
-  fail "the upload stopped (lftp exit $lftp_status). Check the messages above. If it says the marker file is missing, create $MARKER in the letsgetfit.site document root and check FTP_DIRECTORY points at that folder. If it says the certificate is not trusted, see 'Certificate errors' in docs/DEPLOY-CPANEL.md."
+  fail "the upload stopped (lftp exit $lftp_status). Check the messages above. If it says the certificate is not trusted, see 'Certificate errors' in docs/DEPLOY-CPANEL.md."
 fi
 info "done."
