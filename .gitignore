@@ -1,0 +1,33 @@
+# Dependencies and build output
+node_modules/
+dist/
+
+# Test output
+test-results/
+playwright-report/
+
+# Local and production configuration — never commit real settings or secrets
+.env
+.env.*
+!.env.example
+config/*.env
+config/*.php
+!config/*.example
+!config/*.example.*
+
+# Logs, backups, uploads
+*.log
+*.sql
+*.sql.gz
+*.tar.gz
+/backups/
+/uploads/
+/storage/
+/tmp/
+
+# Editor and OS files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
