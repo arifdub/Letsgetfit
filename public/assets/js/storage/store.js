@@ -3,6 +3,7 @@
 // Everything is kept in one localStorage key as JSON:
 //   { schemaVersion, preferences, profile, workouts[], weights[], foods[], diary[] }
 // v1 (Phase 1): profile, workouts, weights. v2 (Phase 2): adds the food library and diary.
+// v3 (Phase 3): workouts get a `type` ('activity' or 'session'); adds `draftSession`.
 // Units are canonical metric (cm, kg, kcal). Entry dates are local "YYYY-MM-DD"; createdAt and
 // updatedAt are ISO 8601 UTC timestamps. Each record has a stable random ID so that a later
 // opt-in sync (Phase 4) can de-duplicate safely.
@@ -14,7 +15,7 @@
 import { nowUtcIso } from '../lib/dates.js';
 
 export const STORAGE_KEY = 'letsgetfit.data';
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 
 /** migrations[n] upgrades data from version n-1 to version n. */
 export const migrations = {
@@ -31,10 +32,16 @@ export const migrations = {
     foods: Array.isArray(data?.foods) ? data.foods : [],
     diary: Array.isArray(data?.diary) ? data.diary : [],
   }),
+  3: (data) => ({
+    ...data,
+    schemaVersion: 3,
+    workouts: (Array.isArray(data?.workouts) ? data.workouts : []).map((w) => (w && !w.type ? { ...w, type: 'activity' } : w)),
+    draftSession: data?.draftSession ?? null,
+  }),
 };
 
 export function emptyData() {
-  return { schemaVersion: SCHEMA_VERSION, preferences: { units: 'metric' }, profile: null, workouts: [], weights: [], foods: [], diary: [] };
+  return { schemaVersion: SCHEMA_VERSION, preferences: { units: 'metric' }, profile: null, workouts: [], weights: [], foods: [], diary: [], draftSession: null };
 }
 
 export function migrate(data) {
@@ -260,6 +267,18 @@ export class Store {
   }
   deleteDiaryEntry(id) {
     this.#remove('diary', id);
+  }
+
+  /** A training session in progress (survives reloads). */
+  get draftSession() {
+    return this.data.draftSession ?? null;
+  }
+
+  saveDraftSession(draft) {
+    // No listeners: the draft changes on every keystroke and views do not depend on it.
+    const next = { ...this.data, draftSession: draft ? { ...draft, savedAt: nowUtcIso() } : null };
+    this.#write(next);
+    this.data = next;
   }
 
   /** Removes all LetsGetFit data from this device. */

@@ -64,7 +64,7 @@ test('unversioned legacy data is migrated and rewritten', () => {
   assert.equal(s.workouts.length, 1);
   assert.deepEqual(s.weights, []);
   assert.equal(JSON.parse(backend.getItem(STORAGE_KEY)).schemaVersion, SCHEMA_VERSION);
-  assert.deepEqual(migrate(null), { schemaVersion: 2, preferences: { units: 'metric' }, profile: null, workouts: [], weights: [], foods: [], diary: [] });
+  assert.deepEqual(migrate(null), { schemaVersion: 3, preferences: { units: 'metric' }, profile: null, workouts: [], weights: [], foods: [], diary: [], draftSession: null });
 });
 
 test('Phase 1 (v1) data stays readable after the v2 upgrade', () => {
@@ -78,16 +78,17 @@ test('Phase 1 (v1) data stays readable after the v2 upgrade', () => {
   };
   backend.setItem(STORAGE_KEY, JSON.stringify(v1));
   const s = new Store({ backend });
-  assert.equal(s.data.schemaVersion, 2);
+  assert.equal(s.data.schemaVersion, SCHEMA_VERSION);
   assert.equal(s.units, 'imperial');
   assert.deepEqual(s.profile, v1.profile);
-  assert.deepEqual(s.workouts, v1.workouts);
+  assert.deepEqual(s.workouts, v1.workouts.map((w) => ({ ...w, type: 'activity' })));
   assert.deepEqual(s.weights, v1.weights);
   assert.deepEqual(s.foods, []);
   assert.deepEqual(s.diary, []);
   const saved = JSON.parse(backend.getItem(STORAGE_KEY));
-  assert.equal(saved.schemaVersion, 2);
-  assert.deepEqual(saved.workouts, v1.workouts);
+  assert.equal(saved.schemaVersion, SCHEMA_VERSION);
+  assert.equal(saved.workouts[0].durationMin, 30);
+  assert.equal(saved.workouts[0].type, 'activity');
 });
 
 test('diary entries and foods: add, filter by date, update, delete', () => {
@@ -179,4 +180,32 @@ test('local dates', () => {
   assert.equal(isValidLocalDate('2024-02-29'), true);
   assert.equal(isValidLocalDate('2026-02-29'), false);
   assert.equal(isValidLocalDate('2026-1-5'), false);
+});
+
+test('v2 data (Phase 2) upgrades to v3 keeping diary and foods', () => {
+  const backend = memoryBackend();
+  const v2 = {
+    schemaVersion: 2, preferences: { units: 'metric' }, profile: null,
+    workouts: [{ id: 'w', localDate: '2026-11-01', activityId: 'yoga', durationMin: 20 }],
+    weights: [], foods: [{ id: 'f', name: 'Oats' }], diary: [{ id: 'd', localDate: '2026-11-01', name: 'Oats' }],
+  };
+  backend.setItem(STORAGE_KEY, JSON.stringify(v2));
+  const s = new Store({ backend });
+  assert.equal(s.data.schemaVersion, 3);
+  assert.equal(s.workouts[0].type, 'activity');
+  assert.equal(s.foods.length, 1);
+  assert.equal(s.diary.length, 1);
+  assert.equal(s.draftSession, null);
+});
+
+test('draft session persists without notifying listeners, and clears', () => {
+  const backend = memoryBackend();
+  const s = new Store({ backend });
+  let calls = 0;
+  s.subscribe(() => (calls += 1));
+  s.saveDraftSession({ title: 'Gym A', exercises: [] });
+  assert.equal(calls, 0);
+  assert.equal(new Store({ backend }).draftSession.title, 'Gym A');
+  s.saveDraftSession(null);
+  assert.equal(new Store({ backend }).draftSession, null);
 });
