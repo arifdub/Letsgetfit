@@ -101,6 +101,21 @@ FTP paths are relative to where the FTP account lands when it logs in:
 - **Main cPanel account** (lands in `/home/CPANELUSER`): use the document root from cPanel → **Domains** without the `/home/CPANELUSER/` part, for example `letsgetfit.site` or `public_html`.
 - **Recommended: a dedicated FTP account** limited to the site. Go to cPanel → **FTP Accounts** → **Add FTP Account**, set **Directory** to the letsgetfit.site document root, and use a long generated password. That account lands inside the document root, so `FTP_DIRECTORY` is `/`. It cannot touch the rest of your hosting if the password ever leaks.
 
+### Eco Web Hosting (this site's host)
+
+Eco Web Hosting's help centre, read through search results on 9 November 2026, describes its shared hosting like this. The help pages themselves could not be opened from the build environment.
+
+- **FTP:** available on all shared hosting accounts. FTP users are managed under **Hosting → Manage** (for the domain) → **FTP Accounts**, where FTP may need to be **unlocked** for a user. Connect on **port 21** with **explicit FTP over TLS** in passive mode. That is exactly what `scripts/deploy-ftp.sh` does.
+- **Web root:** each domain's site files live in `/domains/<domain>/public_html/`. For this site that is likely `/domains/letsgetfit.site/public_html`, which is not the plain `public_html` of a standard cPanel account.
+- **SSH:** not always enabled on shared plans. The FTPS deploy does not need it.
+
+So for Eco:
+
+- set `FTP_DIR` to `/domains/letsgetfit.site/public_html`, or to `/` if the FTP account's directory is already that folder; and
+- create `.letsgetfit-docroot` inside that `public_html` folder, using the control panel's File Manager or an FTP client such as FileZilla with hidden files shown.
+
+If `FTP_DIR` points anywhere else, the deploy stops with `550 … .letsgetfit-docroot: No such file or directory` and uploads nothing.
+
 ### One-time setup on the server
 
 1. Make sure the document root exists (cPanel → **Domains**).
