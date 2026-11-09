@@ -112,3 +112,16 @@ Active kcal = (MET − 1) × weight (kg) × duration (hours)
 | kcal → kJ | 4.184 |
 
 Imperial input is converted once on entry. Heights and weights are stored in cm and kg, rounded to 0.1. For example, 5 ft 9 in is stored as 175.3 cm and 12 st 8 lb as 79.8 kg. Tests check that converting back gives the same imperial value.
+
+## Training sessions (Phase 3)
+
+- **Effort:** session rating of perceived exertion on a 1–10 scale (modified Borg CR10, as used for session-RPE by Foster et al., *J Strength Cond Res* 2001;15(1):109–115). It is self-reported and shown as given. No scores are derived from it.
+- **Volume:** the sum of repetitions × load (kg) across sets that record a load. It is shown as "kg lifted" (or lb). Bodyweight and timed sets are not counted in volume.
+- **Session energy (optional):** (3.5 − 1) × weight (kg) × hours, using the Compendium value for "resistance training, multiple exercises, 8–15 repetitions" (code 02050, 3.5 MET). The weight used is snapshotted with the session. Like other workout estimates, it is labelled and never added to maintenance.
+- **Weekly summaries:** weeks run Monday to Sunday. "Active minutes" are the durations the user logged. "Strength days" are distinct dates with a session containing a non-cardio exercise. These sit next to the WHO 2020 adult guideline (at least 150 minutes of moderate activity a week, plus muscle strengthening on 2 or more days) for comparison only. **Source check status:** needs a manual check against the WHO 2020 guidelines and the HSE page.
+
+## Weight trend (Phase 3)
+
+- **Trend value:** the mean of all readings in the 7 days up to and including each reading's date (a trailing window). Several readings on one day are averaged first.
+- **Change over time:** the difference between the latest trend value and the trend value about 28 days earlier, or the earliest one if there is none that old. It is shown only when there are at least 4 readings spanning at least 21 days. Otherwise the app explains that more data is needed, so day-to-day fluctuations are never presented as change.
+- **Limits:** a moving average lags real change by a few days and depends on how regularly you weigh. Fluid, food, salt, hormones and timing can move weight by a kilogram or more from day to day.

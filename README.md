@@ -9,9 +9,9 @@ All figures are presented as estimates. The app does not give medical advice or 
 | Phase | Scope | Status |
 |---|---|---|
 | 1 | Calculator and local tracking: static, no backend | ✅ Complete, live |
-| 2 | Food diary and nutrient data (PHP food search) | ✅ Complete |
-| 3 | Exercise library, routines, progress trends | Next |
-| 4 | Optional accounts and sync | Planned |
+| 2 | Food diary and nutrient data (PHP food search) | ✅ Complete, live |
+| 3 | Exercise library, routines, progress trends | ✅ Complete |
+| 4 | Optional accounts and sync | Next |
 | 5 | AI meal scan | Planned |
 
 Details and acceptance checks: [docs/STATUS.md](docs/STATUS.md).
@@ -39,6 +39,22 @@ Everything is stored in the browser's `localStorage`. Nothing is sent to a serve
 - **Reliable records:** every diary entry stores the source, source ID, per-100 g values with units, grams and a nutrient snapshot, so old entries never change. Duplicates are detected.
 - **Manual entry always works,** including on a static server or when search fails.
 - Details: [docs/FOOD-DATA.md](docs/FOOD-DATA.md), including the Open Food Facts evaluation.
+
+## What Phase 3 adds
+
+- **Workouts:**
+  - an **exercise library** of 31 exercises, each with form cues, equipment, difficulty and substitutions;
+  - five **starter routines** (Home starter, Home with dumbbells, Gym full body A and B, Core in 15 minutes);
+  - a **session logger** for sets, reps and load (kg or lb), timed holds and cardio minutes, with an overall effort rating (1–10). The logger offers swaps and a safety note. A session in progress survives a page reload.
+- **History:** each session shows sets, volume and effort, with an expandable list of exercises.
+- **This week:** workouts, active minutes and strength days, next to the WHO adult guideline for comparison.
+- **Progress:**
+  - a **weight trend** chart with daily readings and a 7-day average, including a tooltip, keyboard reading and a table view;
+  - a trend change that appears only once there are at least 4 readings over 3 weeks;
+  - a **weekly summary** table for the last 8 weeks.
+- **Export:** CSV downloads for workouts, sets, weights and the food diary, alongside the JSON copy.
+
+Calorie estimates for sessions stay optional, labelled and separate from daily energy.
 
 ## Run it locally
 

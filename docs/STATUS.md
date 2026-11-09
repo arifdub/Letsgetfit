@@ -4,8 +4,8 @@
 |---|---|---|
 | 1 | Calculator and local tracking (static) | **Complete**: implemented and tested. Automatic FTPS deploy to cPanel is configured; the first live deploy depends on the server setup in docs/DEPLOY-CPANEL.md. |
 | 2 | Food diary and nutrient data (manual diary, PHP FoodData Central adapter, Open Food Facts evaluation) | **Complete**: implemented and tested; deployed by the FTPS workflow. Barcode lookup is deferred (see docs/FOOD-DATA.md). |
-| 3 | Workouts library, routines and progress trends | Not started. Next. |
-| 4 | Optional accounts and cloud sync | Not started |
+| 3 | Workouts library, routines and progress trends | **Complete**: implemented and tested; deployed by the FTPS workflow. |
+| 4 | Optional accounts and cloud sync | Not started. Next. |
 | 5 | AI meal scan | Not started |
 
 ## Phase 1 acceptance
@@ -51,6 +51,35 @@
 - Check the first deploy's "Server health" line, then search for a food on the live site.
 - Review the Open Food Facts terms before any barcode work.
 
-## Phase 3 plan (summary)
+## Phase 3 acceptance
 
-Exercise library and starter home and gym routines (form cues, equipment, difficulty, substitutions); set, rep, load, duration and effort logging; workout history and weekly summaries; weight trend from real entries with smoothing (no single-day conclusions); CSV and JSON export. Workout calorie estimates stay separate and labelled.
+| Criterion | How it is verified |
+|---|---|
+| Exercise library with form cues, equipment, difficulty and substitutions | Unit: library integrity (unique IDs, every exercise has 2+ cues and resolvable substitutions, cardio maps to a MET activity). e2e: "library: filters by equipment and type, shows cues and swaps" |
+| Starter home and gym routines | Unit: routines reference real exercises; home and gym options exist; Home starter needs no weights. e2e: running "Home with dumbbells" and "Gym full body A" |
+| Log sets, reps, load, duration and perceived effort | Unit: session validation (metric and imperial load, time and cardio sets, empty sets dropped, errors). e2e: logging loads, a timed carry, session effort 6/10, linked error summary, edit without duplicating |
+| Substitutions during a session; draft not lost | e2e: swap keeps 3 sets; draft survives reload and resumes |
+| Workout history and weekly summaries | Unit: Monday-start weeks, counts, minutes, strength days, sets and volume. e2e: history details, "This week" card, weekly table |
+| Weight trend from actual data, no single-day conclusions | Unit: 7-day trailing average, same-day readings averaged, change only with 4+ readings over 21+ days. e2e: a 2 kg one-day drop is not reported as change; 30-day series reports the trend change |
+| Chart accessibility | e2e: legend, keyboard focus with Home and arrow keys shows the tooltip, pointer hover, table view, no horizontal scroll on a phone. Chart colours validated for both themes. |
+| CSV or JSON export | Unit: RFC 4180 quoting, formula-injection guard, headers. e2e: four CSV downloads with headers; `=SUM(A1)` neutralised. JSON export from Phase 1. |
+| Exercise calorie estimates separate and labelled | Unit: session estimate is optional, 3.5 MET net. e2e: "About 115 kcal active energy (estimate, not added…)" and maintenance unchanged |
+| Older data readable | Unit and e2e: v1 to v3 and v2 to v3 migrations keep workouts, weights, diary and foods |
+
+## Phase 4 plan (summary)
+
+Optional accounts (anonymous use stays), with these pieces:
+
+- email verification and password reset;
+- secure session cookies, CSRF protection and rate limits;
+- server-side ownership checks on every record, with a test that two users cannot read each other's data;
+- opt-in migration of local logs, with a preview and duplicate protection (records already have stable UUIDs);
+- account export and deletion;
+- MySQL migrations, with backup and restore procedures.
+
+**Before any health data is stored server-side:** complete the data inventory, retention rules, processor list, privacy policy and EU privacy review.
+
+**Decisions needed from you before Phase 4:**
+- Database details from the host (MySQL or MariaDB version, and whether you can create a dedicated user).
+- An SMTP provider for verification and reset emails.
+- Who will carry out the EU privacy review.

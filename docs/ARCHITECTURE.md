@@ -54,6 +54,11 @@ No Composer dependencies are needed yet. Everything uses PHP's standard library 
 | Workout entries save `metUsed`, `weightKgUsed` and `estimatedActiveKcal` | Old entries do not change when the MET table or the user's weight changes. Phase 2 diary entries will snapshot nutrients the same way. |
 | Food diary entries snapshot per-100 g values, units and scaled nutrients | Logged days never change when a source or library food changes; unknown values stay `null`, not zero. See `docs/FOOD-DATA.md`. |
 | Food search proxied through PHP, never called from the browser | The API key stays on the server; caching and rate limits protect the key's quota; the Content Security Policy can stay `connect-src 'self'`. |
+| Sessions live in `workouts` with `type: 'session'` (schema v3); Phase 1 entries become `type: 'activity'` | One history, one weekly summary and one export. Migration is additive. |
+| Session in progress saved as `draftSession` without notifying views | Typing a set never triggers re-renders, and a reload or closed tab does not lose a workout. |
+| Exercise content and routines are static modules (`lib/exercises.js`) | Reviewable in one place, tested for integrity, and no server needed. |
+| Chart colours: series 1 blue (#2a78d6 light, #3987e5 dark) for the 7-day line and series 2 orange (#eb6834, #d95926) for readings | Validated with the dataviz palette checker on both app surfaces (lightness, chroma, colour-blind separation, contrast). Line and dot shapes add a second cue beyond colour. A table view is always available. |
+| CSV with a formula-injection guard | Exports open safely in spreadsheet apps. |
 | Units preference kept apart from the profile | Changing display units never changes stored values. |
 | Logged workouts are not added to maintenance | The activity level already includes usual exercise. Adding workouts again would double-count. |
 | Maintenance only; no loss or gain targets | Targets need separately reviewed eligibility rules and safeguards (see `docs/STATUS.md`). |
