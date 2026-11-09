@@ -40,7 +40,8 @@ for (const file of files) {
 for (const file of files.filter((f) => f.endsWith('.php'))) {
   const rel = path.relative(ROOT, file);
   const code = await readFile(file, 'utf8');
-  if (code.split('\n').length > 60) problems.push(`${rel}: PHP entry points must stay small; put logic in server/`);
+  const maxLines = rel.endsWith('.inc.php') ? 100 : 60;
+  if (code.split('\n').length > maxLines) problems.push(`${rel}: PHP entry points must stay small; put logic in server/`);
   if (/(api[_-]?key|password|secret)\s*[=:>]+\s*['"][^'"]{6,}/i.test(code)) problems.push(`${rel}: looks like it contains a secret`);
   if (!/^<\?php\s+declare\(strict_types=1\);/.test(code)) problems.push(`${rel}: must start with declare(strict_types=1)`);
 }

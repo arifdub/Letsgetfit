@@ -2,7 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, symlinkSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, symlinkSync, cpSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import net from 'node:net';
@@ -138,6 +138,46 @@ test('without the private folder the API says it is not configured', { skip }, a
   const s = await setup({ withPrivate: false });
   t.after(() => s.stop());
   const r = await get(`${s.app.url}/api/foods.php?q=apple`);
+  assert.equal(r.status, 503);
+  assert.equal(r.body.error, 'not_configured');
+});
+
+test('finds the private folder in the home folder with an Eco-style linked public_html', { skip }, async (t) => {
+  // home/domains/letsgetfit.site/public_html  (real document root)
+  // home/public_html -> domains/letsgetfit.site/public_html   (link)
+  // home/letsgetfit-private  (where FTP put it, via the linked path's parent)
+  const base = mkdtempSync(path.join(tmpdir(), 'lgf-eco-'));
+  t.after(() => rmSync(base, { recursive: true, force: true }));
+  const home = path.join(base, 'home');
+  const real = path.join(home, 'domains', 'letsgetfit.site', 'public_html');
+  mkdirSync(real, { recursive: true });
+  cpSync(path.join(REPO, 'public'), real, { recursive: true });
+  symlinkSync(path.join('domains', 'letsgetfit.site', 'public_html'), path.join(home, 'public_html'));
+  const priv = path.join(home, 'letsgetfit-private');
+  mkdirSync(path.join(priv, 'config'), { recursive: true });
+  symlinkSync(path.join(REPO, 'server'), path.join(priv, 'app'));
+  writeFileSync(path.join(priv, 'config', 'app.php'), "<?php return ['fdc_api_key' => 'abc12345'];");
+  const env = { ...process.env };
+  delete env.LETSGETFIT_PRIVATE_DIR;
+  const app = await phpServer(['-t', path.join(home, 'public_html')], { ...env, HOME: path.join(base, 'elsewhere') });
+  t.after(() => app.stop());
+  const r = await get(`${app.url}/api/health.php`);
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal(r.body.foodSearch, 'configured');
+});
+
+test('a letsgetfit-private folder inside the web root is ignored', { skip }, async (t) => {
+  const base = mkdtempSync(path.join(tmpdir(), 'lgf-inside-'));
+  t.after(() => rmSync(base, { recursive: true, force: true }));
+  const docroot = path.join(base, 'site');
+  cpSync(path.join(REPO, 'public'), docroot, { recursive: true });
+  mkdirSync(path.join(docroot, 'letsgetfit-private'), { recursive: true });
+  symlinkSync(path.join(REPO, 'server'), path.join(docroot, 'letsgetfit-private', 'app'));
+  const env = { ...process.env, HOME: path.join(base, 'nohome') };
+  delete env.LETSGETFIT_PRIVATE_DIR;
+  const app = await phpServer(['-t', docroot], env);
+  t.after(() => app.stop());
+  const r = await get(`${app.url}/api/health.php`);
   assert.equal(r.status, 503);
   assert.equal(r.body.error, 'not_configured');
 });
