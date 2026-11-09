@@ -1,0 +1,9 @@
+---
+# cPanel Git Version Control deployment for LetsGetFit.
+# cPanel runs these tasks from the repository checkout when you click "Deploy HEAD Commit".
+# The destination is NOT set here; scripts/deploy.sh reads it from a server-local file
+# (~/.config/letsgetfit/deploy.env) so the real document root never needs to be committed.
+# See docs/DEPLOY-CPANEL.md.
+deployment:
+  tasks:
+    - /bin/bash scripts/deploy.sh

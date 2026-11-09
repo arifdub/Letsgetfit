@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Tests and static release
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Chromium for browser smoke tests
+        run: npx playwright install --with-deps chromium
+
+      - name: Formula and storage unit tests
+        run: npm run test:unit
+
+      - name: Static release check
+        run: npm run check:static
+
+      - name: Deploy script tests
+        run: npm run test:deploy
+
+      - name: Browser smoke tests
+        run: npm run test:e2e
+
+      # A ready-to-upload copy of the document-root files, for the File Manager fallback.
+      # This is a build artifact only; nothing is deployed from CI.
+      - name: Package static release
+        run: |
+          mkdir -p dist
+          tar -czf "dist/letsgetfit-public-${GITHUB_SHA::12}.tar.gz" -C public .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: letsgetfit-public-${{ github.sha }}
+          path: dist/*.tar.gz
+          retention-days: 30
