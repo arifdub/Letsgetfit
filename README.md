@@ -8,9 +8,9 @@ All figures are presented as estimates. The app does not give medical advice or 
 
 | Phase | Scope | Status |
 |---|---|---|
-| 1 | Calculator and local tracking: static, no backend | ✅ Complete (not yet deployed) |
-| 2 | Food diary and nutrient data (PHP food search) | Next |
-| 3 | Exercise library, routines, progress trends | Planned |
+| 1 | Calculator and local tracking: static, no backend | ✅ Complete, live |
+| 2 | Food diary and nutrient data (PHP food search) | ✅ Complete |
+| 3 | Exercise library, routines, progress trends | Next |
 | 4 | Optional accounts and sync | Planned |
 | 5 | AI meal scan | Planned |
 
@@ -28,6 +28,18 @@ Details and acceptance checks: [docs/STATUS.md](docs/STATUS.md).
 
 Everything is stored in the browser's `localStorage`. Nothing is sent to a server.
 
+## What Phase 2 adds
+
+- **Food:** a diary by date with breakfast, lunch, dinner and snacks; amounts in grams; edit and delete; and daily totals. Totals cover energy, protein, carbohydrate, fat, fibre, iron, calcium, potassium, vitamin D and B12.
+- **Unknown, not zero:** missing nutrient values show as *unknown*, and totals that include unknowns are flagged as incomplete.
+- **Adding foods:**
+  - search USDA FoodData Central through a PHP endpoint, with the key kept server-side, timeouts, rate limits and a cache;
+  - pick from **My foods**;
+  - create your own food from a label (per 100 g, raw or cooked, generic or branded).
+- **Reliable records:** every diary entry stores the source, source ID, per-100 g values with units, grams and a nutrient snapshot, so old entries never change. Duplicates are detected.
+- **Manual entry always works,** including on a static server or when search fails.
+- Details: [docs/FOOD-DATA.md](docs/FOOD-DATA.md), including the Open Food Facts evaluation.
+
 ## Run it locally
 
 Requirements: Node.js 20 or newer (only for the local server and tests; the app itself has no build step).
@@ -37,13 +49,23 @@ npm ci                     # installs Playwright for the browser tests
 npm run serve              # http://127.0.0.1:8080/
 ```
 
-Any static web server also works: `python3 -m http.server -d public 8080`.
+Any static web server also works: `python3 -m http.server -d public 8080`. Without PHP, food search shows as unavailable and manual entry is used.
+
+To try food search locally with PHP, point it at a private folder whose `app` folder is a link to `server/`, and add your own key:
+
+```bash
+mkdir -p /tmp/lgf-private/config && ln -s "$PWD/server" /tmp/lgf-private/app
+cp config/app.example.php /tmp/lgf-private/config/app.php   # put your FDC key in it, or '' for DEMO_KEY
+LETSGETFIT_PRIVATE_DIR=/tmp/lgf-private php -S 127.0.0.1:8080 -t public
+```
 
 ## Tests
 
 ```bash
-npm run test:unit          # formulas, conversions, validation, storage (node:test)
+npm run test:unit          # formulas, conversions, validation, storage, food diary (node:test)
 npm run check:static       # public/ is a complete, safe static release
+npm run test:php           # PHP lint + unit tests (needs PHP 8.3+ with curl, mbstring)
+npm run test:api           # PHP API against a mock FoodData Central (php -S)
 npm run test:deploy        # scripts/deploy.sh against temporary directories
 npx playwright install chromium   # once, if Chromium is not already installed
 npm run test:e2e           # browser smoke tests: forms, persistence, keyboard, mobile layout
@@ -55,7 +77,8 @@ GitHub Actions runs all of these on every push and pull request (`.github/workfl
 ## Project structure
 
 ```
-public/            Web root: the only folder that gets deployed
+public/            Web root: deployable files and thin PHP entry points (api/)
+server/            PHP code for the API, deployed OUTSIDE the web root
   assets/js/lib/       Pure calculation and validation logic (unit-tested)
   assets/js/storage/   Versioned browser storage
   assets/js/ui/        Views and DOM helpers
@@ -78,12 +101,12 @@ See **[docs/DEPLOY-CPANEL.md](docs/DEPLOY-CPANEL.md)**.
 
 ## External services
 
-Phase 1 uses none. Later phases will document each service here, together with how to run without production credentials (mocks and development fixtures):
+Each service, and how to run without production credentials:
 
 | Service | Phase | Needed for |
 |---|---|---|
-| USDA FoodData Central API | 2 | Food search |
-| Open Food Facts (under evaluation) | 2 | Irish and EU branded products and barcodes |
+| USDA FoodData Central API | 2 (live) | Food search. Optional `FDC_API_KEY` secret; without it the public DEMO_KEY is used. Tests use a mock server and fixtures. |
+| Open Food Facts | Evaluated, not adopted | Irish and EU branded products and barcodes (see docs/FOOD-DATA.md) |
 | SMTP / email provider | 4 | Account verification and password reset |
 | AI vision provider | 5 | Meal photo suggestions |
 

@@ -26,14 +26,21 @@ docs/                   This file, formulas, deployment, status, privacy
 .cpanel.yml             cPanel deployment tasks
 ```
 
-Planned server additions keep the web root minimal:
+Server side (Phase 2) keeps the web root minimal:
 
 ```
-public/api/*.php        Thin JSON entry points only (Phase 2+)
-src/                    PHP application code, outside the web root (Phase 2+)
-migrations/             SQL migrations, outside the web root (Phase 4)
-config/*.example.php    Templates; real config lives in ~/.config/letsgetfit/ on the server
+public/api/*.php        Thin JSON entry points (foods.php, health.php) + bootstrap.inc.php
+server/                 PHP 8.3 code, deployed OUTSIDE the web root as letsgetfit-private/app
+  src/Config.php            settings from letsgetfit-private/config/app.php
+  src/FoodDataCentral.php   USDA adapter + normalisation
+  src/Nutrients.php         canonical nutrients, FDC mapping, unit conversion
+  src/FoodSearchController.php, RateLimiter.php, FileCache.php, Api.php, Http/*
+config/app.example.php  Template with placeholders; the deploy writes the real file from secrets
+tests/php, tests/api    PHP unit tests (no Composer) and php -S integration tests with a mock FDC
+migrations/             SQL migrations, outside the web root (Phase 4, planned)
 ```
+
+No Composer dependencies are needed yet. Everything uses PHP's standard library and the curl extension, so nothing has to be installed on the host.
 
 ## Decisions
 
@@ -45,6 +52,8 @@ config/*.example.php    Templates; real config lives in ~/.config/letsgetfit/ on
 | Records: random UUID `id`, local `localDate` (YYYY-MM-DD), UTC `createdAt`/`updatedAt` | Stable IDs let Phase 4 merge data from devices without duplicates. The local date keeps entries on the day the user meant. |
 | Metric storage (cm, kg, kcal), imperial converted once on entry | One canonical form avoids rounding drift and keeps later server storage simple. |
 | Workout entries save `metUsed`, `weightKgUsed` and `estimatedActiveKcal` | Old entries do not change when the MET table or the user's weight changes. Phase 2 diary entries will snapshot nutrients the same way. |
+| Food diary entries snapshot per-100 g values, units and scaled nutrients | Logged days never change when a source or library food changes; unknown values stay `null`, not zero. See `docs/FOOD-DATA.md`. |
+| Food search proxied through PHP, never called from the browser | The API key stays on the server; caching and rate limits protect the key's quota; the Content Security Policy can stay `connect-src 'self'`. |
 | Units preference kept apart from the profile | Changing display units never changes stored values. |
 | Logged workouts are not added to maintenance | The activity level already includes usual exercise. Adding workouts again would double-count. |
 | Maintenance only; no loss or gain targets | Targets need separately reviewed eligibility rules and safeguards (see `docs/STATUS.md`). |

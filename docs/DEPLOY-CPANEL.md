@@ -27,7 +27,7 @@ This guide covers deploying letsgetfit.site from GitHub to ordinary shared cPane
 
 No PHP, database or secrets are needed for Phase 1.
 
-### Phase 2: food diary and food search (planned)
+### Phase 2: food diary and food search
 
 - **MultiPHP Manager:** set letsgetfit.site to PHP 8.3 or newer. Check **MultiPHP INI Editor** and **Select PHP Version → Extensions** (CloudLinux), or a `phpinfo()` page that you delete straight after. Confirm the version and that `curl`, `json`, `mbstring` and `openssl` are enabled. Phase 2 will list exactly which extensions it uses.
 - **Outbound HTTPS** from PHP to `api.nal.usda.gov` (FoodData Central) and, if adopted, `world.openfoodfacts.org`. Some hosts block outbound requests; ask if search fails with a connection error.
@@ -115,6 +115,30 @@ So for Eco:
 - create `.letsgetfit-docroot` inside that `public_html` folder, using the control panel's File Manager or an FTP client such as FileZilla with hidden files shown.
 
 If `FTP_DIR` points elsewhere, the deploy searches the usual locations, including `/domains/letsgetfit.site/public_html`. It uploads only to the folder that the live site is shown to serve.
+
+### Server code for food search (Phase 2)
+
+Food search uses PHP. The deploy uploads:
+
+| What | Where on the server | Public? |
+|---|---|---|
+| `public/api/foods.php`, `health.php`, `bootstrap.inc.php` (thin entry points) | document root `/api/` | Yes (`bootstrap.inc.php` is blocked by `.htaccess`) |
+| `server/` (all PHP code) | `letsgetfit-private/app/` **next to** the document root, for example `/domains/letsgetfit.site/letsgetfit-private/app` | No |
+| Settings (`app.php`), written from secrets | `letsgetfit-private/config/app.php` | No |
+| Cache and rate-limit files (created by PHP) | `letsgetfit-private/storage/` | No |
+
+**Secrets:**
+- `FDC_API_KEY` (recommended): a free key from <https://fdc.nal.usda.gov/api-key-signup>. Without it, search uses USDA's public `DEMO_KEY`, which allows only a few searches an hour.
+- `APP_HASH_SECRET` (optional): a long random string, used to hash visitor IP addresses for rate limiting. If it is missing, a random one is generated on each deploy that writes settings.
+
+The settings file is rewritten only when `FDC_API_KEY` is set, or when no settings file exists yet. Otherwise an existing file is left alone, so you can also upload `config/app.example.php` yourself, filled in, as `letsgetfit-private/config/app.php`.
+
+**Checks:**
+- After each deploy, the workflow calls `https://letsgetfit.site/api/health.php` and prints the reply. For example: `{"ok":true,"php":"8.3","extensions":{"curl":true,…},"storageWritable":true,"foodSearch":"configured"}`. That is how the host's actual PHP version and extensions are confirmed.
+- Set the domain's PHP version to **8.3 or newer**, with the **curl**, **json** and **mbstring** extensions, in the control panel's PHP settings (cPanel: **MultiPHP Manager** / **Select PHP Version**).
+- PHP must be allowed to make outbound HTTPS requests to `api.nal.usda.gov`. If search always fails with "not available", ask Eco Web Hosting whether outbound connections are blocked.
+
+**If the FTP account is locked to the document root** (`FTP_DIR` is `/`), the deploy cannot reach the folder above it. It then skips the server code with a warning, and nothing private is ever put inside the web root. To fix it, use an FTP account whose home is the hosting root, with `FTP_DIR=/domains/letsgetfit.site/public_html`. Manual food entry works either way.
 
 ### One-time setup on the server
 
