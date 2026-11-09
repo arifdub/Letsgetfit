@@ -20,6 +20,8 @@
 #   DEPLOY_SOURCE    folder to upload, default <repo>/public
 #   DRY_RUN          "true" to list what would be uploaded without changing anything
 #   SITE_URL         live address, default https://letsgetfit.site/ (used to prove the folder)
+#   FDC_API_KEY      USDA FoodData Central key, written to the private settings file
+#   APP_HASH_SECRET  optional secret for hashing visitor IPs in rate limits (random if unset)
 #
 # Safety rules (same as scripts/deploy.sh):
 #   - Always encrypted (explicit FTPS). Plain FTP is refused, so the password never travels
@@ -43,6 +45,7 @@ info() {
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 SOURCE="${DEPLOY_SOURCE:-$REPO_ROOT/public}"
+SERVER_SOURCE="${DEPLOY_SERVER_SOURCE:-$REPO_ROOT/server}"
 MARKER=".letsgetfit-docroot"
 
 missing=()
@@ -81,6 +84,13 @@ case "${FTP_VERIFY_CERT:-true}" in
 esac
 
 [[ "$FTP_USERNAME" != *$'\n'* && "$FTP_USERNAME" != *'"'* ]] || fail "FTP_USERNAME contains characters that are not allowed."
+# Checked before connecting: these values are written into a PHP settings file.
+if [ -n "${FDC_API_KEY:-}" ] && ! [[ "$FDC_API_KEY" =~ ^[A-Za-z0-9]{8,128}$ ]]; then
+  fail "FDC_API_KEY must be letters and numbers only."
+fi
+if [ -n "${APP_HASH_SECRET:-}" ] && ! [[ "$APP_HASH_SECRET" =~ ^[A-Za-z0-9_-]{16,256}$ ]]; then
+  fail "APP_HASH_SECRET must be 16+ letters, numbers, - or _."
+fi
 
 pin_cmd=""
 if [ -n "${FTP_CERT_FINGERPRINT:-}" ]; then
@@ -224,9 +234,67 @@ lftp_status=0
 run_lftp "cd \"$target\"" \
   "mirror --reverse --no-perms --parallel=2 --verbose=1 $dry --exclude-glob .well-known/ --exclude-glob .git/ --exclude '^index\\.html\$' \"$SOURCE\" ." \
   "$index_cmd" || lftp_status=$?
-unset LFTP_PASSWORD
-
 if [ "$lftp_status" -ne 0 ]; then
+  unset LFTP_PASSWORD
   fail "the upload stopped (lftp exit $lftp_status). Check the messages above. If it says the certificate is not trusted, see 'Certificate errors' in docs/DEPLOY-CPANEL.md."
 fi
+info "website files uploaded."
+
+# ---- Private server code and settings (outside the web root) ----
+# PHP code (server/) goes to <parent of document root>/letsgetfit-private/app and settings to
+# .../config/app.php. If the FTP account cannot reach the parent folder (it is locked to the
+# document root), this is skipped: the site still works and food search reports "not set up".
+deploy_private() {
+  local target_pwd parent_pwd private_root cfg key secret
+  target_pwd="$(run_lftp "cd \"$target\"" "pwd" 2>/dev/null | tail -n 1)"
+  parent_pwd="$(run_lftp "cd \"$target\"" "cd .." "pwd" 2>/dev/null | tail -n 1)"
+  if [ -z "$target_pwd" ] || [ -z "$parent_pwd" ] || [ "$target_pwd" = "$parent_pwd" ] || [[ "$parent_pwd/" == "$target_pwd/"* ]]; then
+    echo "::warning::The FTP account cannot reach the folder above the document root, so the PHP code for food search was not uploaded. Manual food entry still works. See 'Server code for food search' in docs/DEPLOY-CPANEL.md."
+    return 0
+  fi
+  private_root="letsgetfit-private"
+
+  if [ -n "$dry" ]; then
+    info "dry run: would upload server/ to $private_root/app next to the document root."
+    return 0
+  fi
+
+  run_lftp "cd \"$target\"" "cd .." "mkdir -p -f $private_root/app $private_root/config" \
+    "mirror --reverse --no-perms --parallel=2 --verbose=1 --exclude-glob .git/ \"$SERVER_SOURCE\" $private_root/app" \
+    || fail "could not upload the server code to $private_root/app."
+  info "server code uploaded to $private_root/app (outside the web root)."
+
+  key="${FDC_API_KEY:-}"
+  if [ -n "$key" ]; then
+    [[ "$key" =~ ^[A-Za-z0-9]{8,128}$ ]] || fail "FDC_API_KEY must be letters and numbers only."
+  elif run_lftp "cd \"$target\"" "cd .." "cls -1 $private_root/config/app.php" >/dev/null 2>&1; then
+    info "kept the existing server settings (no FDC_API_KEY secret set)."
+    return 0
+  else
+    echo "::warning::No FDC_API_KEY secret is set, so food search uses the public DEMO_KEY, which allows only a few searches per hour. Get a free key at https://fdc.nal.usda.gov/api-key-signup and add it as the FDC_API_KEY repository secret."
+  fi
+  secret="${APP_HASH_SECRET:-}"
+  if [ -z "$secret" ]; then
+    secret="$(od -An -tx1 -N32 /dev/urandom | tr -d ' \n')"
+  fi
+  [[ "$secret" =~ ^[A-Za-z0-9_-]{16,256}$ ]] || fail "APP_HASH_SECRET must be 16+ letters, numbers, - or _."
+  cfg="$(mktemp)"
+  chmod 600 "$cfg"
+  {
+    echo "<?php"
+    echo "// Written by the deploy workflow on $(date -u +%Y-%m-%dT%H:%M:%SZ). Do not commit."
+    echo "return ["
+    echo "    'fdc_api_key' => '$key',"
+    echo "    'hash_secret' => '$secret',"
+    echo "];"
+  } > "$cfg"
+  run_lftp "cd \"$target\"" "cd .." "put \"$cfg\" -o $private_root/config/app.php" >/dev/null || { rm -f "$cfg"; fail "could not upload the server settings."; }
+  rm -f "$cfg"
+  info "server settings written to $private_root/config/app.php (outside the web root)."
+}
+
+if [ -d "$SERVER_SOURCE" ]; then
+  deploy_private
+fi
+unset LFTP_PASSWORD
 info "done."

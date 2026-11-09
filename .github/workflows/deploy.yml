@@ -4,7 +4,8 @@ name: Deploy to cPanel (FTPS)
 #  - Automatically after the CI workflow passes on a push to main (only tested commits go live).
 #  - Manually from Actions > "Deploy to cPanel (FTPS)" > Run workflow, optionally choosing an
 #    older commit to roll back, or a dry run.
-# Secrets used: FTP_SERVER, FTP_USERNAME, FTP_PASSWORD, FTP_DIR (or FTP_DIRECTORY).
+# Secrets used: FTP_SERVER, FTP_USERNAME, FTP_PASSWORD, FTP_DIR (or FTP_DIRECTORY);
+# optional FDC_API_KEY (food search) and APP_HASH_SECRET.
 # Optional repository variables: FTP_CERT_FINGERPRINT, FTP_PORT, FTP_VERIFY_CERT, SITE_URL.
 # See docs/DEPLOY-CPANEL.md. To pause deployments, disable this workflow in the Actions tab.
 
@@ -55,10 +56,18 @@ jobs:
         with:
           node-version: 22
 
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: curl, json, mbstring
+          coverage: none
+
       - name: Quick checks before upload
         run: |
           node --test "tests/unit/*.test.mjs"
           node scripts/check-static.mjs
+          node scripts/php-lint.mjs
+          php tests/php/run.php
 
       - name: Install lftp
         run: sudo apt-get update -qq && sudo apt-get install -y -qq lftp
@@ -77,6 +86,9 @@ jobs:
           FTP_PORT: ${{ vars.FTP_PORT }}
           FTP_VERIFY_CERT: ${{ vars.FTP_VERIFY_CERT }}
           DRY_RUN: ${{ inputs.dry_run && 'true' || 'false' }}
+          # Food search: written to the private settings file outside the web root.
+          FDC_API_KEY: ${{ secrets.FDC_API_KEY }}
+          APP_HASH_SECRET: ${{ secrets.APP_HASH_SECRET }}
           # Used to prove which FTP folder is the live site's document root.
           SITE_URL: ${{ vars.SITE_URL || 'https://letsgetfit.site/' }}
         run: bash scripts/deploy-ftp.sh
@@ -91,4 +103,12 @@ jobs:
             echo "Live check passed: $SITE_URL returns the LetsGetFit page."
           else
             echo "::warning::Files were uploaded, but $SITE_URL did not return the LetsGetFit page. DNS, HTTPS or the document root may not be set up yet. See docs/DEPLOY-CPANEL.md."
+          fi
+          # Server check: PHP version, extensions and food search status (no secrets in the reply).
+          health="$(curl --silent --location --max-time 20 "${SITE_URL%/}/api/health.php" || true)"
+          echo "Server health: $health"
+          if ! grep -q '"ok":true' <<<"$health"; then
+            echo "::warning::$SITE_URL/api/health.php did not answer OK. Food search will be unavailable (manual entry still works). See 'Server code for food search' in docs/DEPLOY-CPANEL.md."
+          elif grep -q '"foodSearch":"demo-key"' <<<"$health"; then
+            echo "::warning::Food search is using the public DEMO_KEY. Add an FDC_API_KEY repository secret for normal use."
           fi

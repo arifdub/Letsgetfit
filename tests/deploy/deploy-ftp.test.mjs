@@ -48,7 +48,7 @@ async function startWeb(docroot) {
   return { url: `http://127.0.0.1:${server.address().port}/`, close: () => server.close() };
 }
 
-async function startFtp({ tls = true } = {}) {
+async function startFtp({ tls = true, chroot = false } = {}) {
   const base = mkdtempSync(path.join(tmpdir(), 'lgf-ftp-'));
   const root = path.join(base, 'home');
   // Eco Web Hosting layout: /domains/<domain>/public_html
@@ -63,7 +63,7 @@ async function startFtp({ tls = true } = {}) {
     assert.equal(r.status, 0, r.stderr);
   }
   const port = await freePort();
-  const proc = spawn(PYTHON, [path.join(REPO, 'tests', 'deploy', 'ftp_server.py'), root, String(port), 'deployer', 'p@ss,w0rd "x"', cert], { stdio: ['ignore', 'pipe', 'pipe'] });
+  const proc = spawn(PYTHON, [path.join(REPO, 'tests', 'deploy', 'ftp_server.py'), chroot ? docroot : root, String(port), 'deployer', 'p@ss,w0rd "x"', cert], { stdio: ['ignore', 'pipe', 'pipe'] });
   await new Promise((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error('FTP server did not start')), 10000);
     proc.stdout.on('data', (d) => {
@@ -241,4 +241,61 @@ test('a malformed fingerprint is refused before connecting', async () => {
   const r = await deploy({ FTP_SERVER: 'ftp.example.invalid', FTP_USERNAME: 'u', FTP_PASSWORD: 'p', FTP_DIRECTORY: 'site', FTP_CERT_FINGERPRINT: 'not-a-fingerprint' });
   assert.notEqual(r.status, 0);
   assert.match(r.stderr, /SHA-1 fingerprint/);
+});
+
+test('server code and settings go next to the document root, never inside it', { skip }, async (t) => {
+  const ftp = await startFtp();
+  t.after(() => ftp.stop());
+  writeFileSync(path.join(ftp.docroot, '.letsgetfit-docroot'), '');
+  const priv = path.join(path.dirname(ftp.docroot), 'letsgetfit-private');
+  const r = await deploy(creds(ftp, { FDC_API_KEY: 'abcd1234EFGH5678', APP_HASH_SECRET: 'hash-secret-for-tests' }));
+  assert.equal(r.status, 0, r.stderr + r.stdout);
+  assert.ok(existsSync(path.join(priv, 'app', 'bootstrap.php')));
+  assert.ok(existsSync(path.join(priv, 'app', 'src', 'FoodDataCentral.php')));
+  const cfg = readFileSync(path.join(priv, 'config', 'app.php'), 'utf8');
+  assert.match(cfg, /'fdc_api_key' => 'abcd1234EFGH5678'/);
+  assert.match(cfg, /'hash_secret' => 'hash-secret-for-tests'/);
+  assert.equal(spawnSync('php', ['-l', path.join(priv, 'config', 'app.php')]).status, 0, 'generated config is valid PHP');
+  assert.ok(!existsSync(path.join(ftp.docroot, 'letsgetfit-private')));
+  assert.ok(!existsSync(path.join(ftp.docroot, 'src')));
+  assert.ok(existsSync(path.join(ftp.docroot, 'api', 'foods.php')), 'thin entry point is public');
+  assert.ok(!r.stdout.includes('abcd1234EFGH5678') && !r.stderr.includes('abcd1234EFGH5678'), 'key never printed');
+
+  // Without the secret, the existing settings are kept.
+  const again = await deploy(creds(ftp));
+  assert.equal(again.status, 0, again.stderr);
+  assert.match(again.stdout, /kept the existing server settings/);
+  assert.match(readFileSync(path.join(priv, 'config', 'app.php'), 'utf8'), /abcd1234EFGH5678/);
+});
+
+test('first deploy without a key writes demo settings and warns', { skip }, async (t) => {
+  const ftp = await startFtp();
+  t.after(() => ftp.stop());
+  writeFileSync(path.join(ftp.docroot, '.letsgetfit-docroot'), '');
+  const r = await deploy(creds(ftp));
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /DEMO_KEY/);
+  const cfg = readFileSync(path.join(path.dirname(ftp.docroot), 'letsgetfit-private', 'config', 'app.php'), 'utf8');
+  assert.match(cfg, /'fdc_api_key' => ''/);
+});
+
+test('rejects an API key that could break the settings file', async () => {
+  // Fails at validation; uses an unreachable server so nothing is uploaded anyway.
+  const r = await deploy({ FTP_SERVER: '127.0.0.1:9', FTP_USERNAME: 'u', FTP_PASSWORD: 'p', FTP_DIRECTORY: 'x', FDC_API_KEY: "abc'; system('x'); //" });
+  assert.notEqual(r.status, 0);
+  assert.match(r.stderr, /FDC_API_KEY must be letters and numbers only/);
+  assert.doesNotMatch(r.stdout, /logged in/);
+  const r2 = await deploy({ FTP_SERVER: '127.0.0.1:9', FTP_USERNAME: 'u', FTP_PASSWORD: 'p', FTP_DIRECTORY: 'x', APP_HASH_SECRET: "short'" });
+  assert.match(r2.stderr, /APP_HASH_SECRET/);
+});
+
+test('an FTP account locked to the document root skips the server code safely', { skip }, async (t) => {
+  const ftp = await startFtp({ chroot: true });
+  t.after(() => ftp.stop());
+  writeFileSync(path.join(ftp.docroot, '.letsgetfit-docroot'), '');
+  const r = await deploy(creds(ftp, { FTP_DIRECTORY: '/', FDC_API_KEY: 'abcd1234EFGH5678' }));
+  assert.equal(r.status, 0, r.stderr + r.stdout);
+  assert.match(r.stdout, /cannot reach the folder above the document root/);
+  assert.ok(existsSync(path.join(ftp.docroot, 'index.html')));
+  assert.ok(!existsSync(path.join(ftp.docroot, 'letsgetfit-private')), 'nothing private inside the web root');
 });

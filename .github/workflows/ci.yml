@@ -45,6 +45,18 @@ jobs:
       - name: Static release check
         run: npm run check:static
 
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: curl, json, mbstring
+          coverage: none
+
+      - name: PHP syntax check and unit tests
+        run: npm run test:php
+
+      - name: PHP API integration tests (mock FoodData Central)
+        run: npm run test:api
+
       - name: Deploy script tests (cPanel Git and FTPS)
         env:
           LGF_TEST_PYTHON: python
