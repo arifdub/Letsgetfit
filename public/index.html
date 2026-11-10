@@ -52,17 +52,16 @@
     <!-- OVERVIEW -->
     <section id="view-overview" class="view" data-view="overview" aria-labelledby="overview-title">
       <h1 id="overview-title" class="view__title" tabindex="-1">Dashboard</h1>
-      <div id="daily-dashboard"></div>
 
       <div id="overview-loading" class="state state--loading" role="status">Loading your details…</div>
 
       <div id="overview-intro" class="card intro" hidden>
-        <p class="lead">Estimate the energy your body uses in a typical day, see a balanced maintenance-day example, and keep a food diary, workout log and weight log.</p>
+        <p class="lead">Start with your measurements and usual activity, then choose whether you want to lose, maintain or gain weight.</p>
         <p>Everything you enter stays in this browser on this device. Only food search text is sent to our server.</p>
       </div>
 
       <form id="profile-form" class="card form" novalidate hidden aria-labelledby="profile-form-title">
-        <h2 id="profile-form-title">Your details</h2>
+        <h2 id="profile-form-title">Your measurements</h2>
         <p class="muted">All fields are needed for the calculation. Each one explains why.</p>
 
         <div id="profile-errors" class="error-summary" role="alert" tabindex="-1" hidden>
@@ -139,7 +138,7 @@
         <div class="field" data-field="activityLevel">
           <fieldset aria-describedby="activity-hint activityLevel-error">
             <legend>Usual activity in a typical week</legend>
-            <p class="hint" id="activity-hint">Include your job, getting around and any regular exercise. Your usual exercise is counted here, so logged workouts are not added again.</p>
+            <p class="hint" id="activity-hint">Include your job, getting around and any regular exercise. Your usual exercise is counted here. The Dashboard can account for extra exercise separately.</p>
             <div class="choices" id="activity-choices"></div>
           </fieldset>
           <p class="field-error" id="activityLevel-error" hidden></p>
@@ -163,6 +162,7 @@
         </div>
       </form>
 
+      <div id="daily-dashboard"></div>
       <div id="overview-results" hidden></div>
     </section>
 
@@ -228,7 +228,7 @@
         </div>
         <div class="field">
           <label class="checkbox"><input type="checkbox" name="showEstimate" id="workout-estimate" aria-describedby="workout-estimate-hint"> Show estimated active calories</label>
-          <p class="hint" id="workout-estimate-hint">An average for the activity using its MET value and your weight. It is for interest only and is not added to your daily estimate.</p>
+          <p class="hint" id="workout-estimate-hint">An average for the activity using its MET value and your weight. The Dashboard can include this in today’s budget if it was extra exercise.</p>
         </div>
         <div class="form__actions">
           <button type="submit" class="button button--primary" id="workout-submit">Add workout</button>

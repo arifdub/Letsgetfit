@@ -30,6 +30,25 @@ export function summaryRing(fraction, over = false) {
   return root;
 }
 
+export function calorieApple(fraction, over) {
+  const body = 'M60 34 C44 22 20 24 13 46 C5 68 19 107 38 112 C48 115 54 109 60 109 C66 109 72 115 82 112 C101 107 115 68 107 46 C100 24 76 22 60 34 Z';
+  const height = 92 * Math.min(1, Math.max(0, fraction));
+  const root = svg('svg', {
+    viewBox: '0 0 120 120', class: over ? 'calorie-apple calorie-apple--over' : 'calorie-apple', 'aria-hidden': 'true',
+  });
+  const clip = svg('clipPath', { id: 'calorie-apple-clip' });
+  clip.append(svg('path', { d: body }));
+  const defs = svg('defs');
+  defs.append(clip);
+  root.append(
+    defs,
+    svg('rect', { x: 0, y: 114 - height, width: 120, height, 'clip-path': 'url(#calorie-apple-clip)', class: 'calorie-apple__fill' }),
+    svg('path', { d: body, class: 'calorie-apple__outline' }),
+    svg('path', { d: 'M60 31 C60 20 56 14 51 11 M60 24 C65 12 75 8 85 10 C81 22 73 26 60 24 Z', class: 'calorie-apple__leaf' }),
+  );
+  return root;
+}
+
 export function summaryBar(fraction) {
   const root = svg('svg', { viewBox: '0 0 100 6', preserveAspectRatio: 'none', class: 'summary-bar', 'aria-hidden': 'true' });
   root.append(svg('rect', { width: 100, height: 6, class: 'summary-bar__track' }));

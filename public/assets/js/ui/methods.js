@@ -66,7 +66,7 @@ const METHODS = [
     rows: [
       ['Equation', '(MET − 1) × weight (kg) × duration (hours). 1 MET is taken as 1 kcal per kg per hour; subtracting 1 removes resting energy.'],
       ['Values', 'MET values and activity codes from the Compendium of Physical Activities (Ainsworth et al., 2011).'],
-      ['Limits', 'Average values for the activity, not a measurement of you. Shown for interest only and never added to your maintenance estimate.'],
+      ['Limits', 'Average values for the activity, not a measurement of you. The Dashboard can optionally include today’s extra activity in its budget. The maintenance estimate stays the same.'],
     ],
   },
 ];

@@ -953,7 +953,7 @@ await check('goals: healthy range, loss plan, safeguards, and Food page referenc
   await page.waitForSelector('#goal-card');
   assert.match(await page.textContent('#healthy-range'), /59\.9 kg to 80\.7 kg \(BMI 18\.5 to 24\.9\)/);
   assert.match(await page.textContent('#goal-plan'), /Daily energy\s*3,290 kcal/);
-  await page.click('#goal-card summary');
+  assert.equal(await page.locator('#goal-card details').getAttribute('open'), '');
   await page.check('input[name="goalType"][value="lose"]');
   // Below the healthy range is refused.
   await page.fill('#goal-kg', '55');
@@ -968,6 +968,9 @@ await check('goals: healthy range, loss plan, safeguards, and Food page referenc
   assert.match(plan, /Maintenance estimate\s*3,290 kcal/);
   assert.match(plan, /Difference\s*−550 kcal a day/);
   assert.match(plan, /About 10 weeks/);
+  assert.match(await page.textContent('.dashboard-budget'), /Maintenance\s*3,290 kcalGoal budget\s*2,740 kcalPlanned deficit\s*−550 kcal/);
+  assert.equal(await page.locator('.calorie-apple__fill').getAttribute('height'), '0');
+  assert.match(await page.textContent('.dashboard-nutrition'), /2,740 kcal left/);
   assert.match(await page.textContent('#goal-card'), /Bodywhys/);
   // Pace options are capped at 1 % of body weight (80 kg -> up to 0.75).
   await page.click('#goal-card summary');
@@ -989,6 +992,31 @@ await check('goals: healthy range, loss plan, safeguards, and Food page referenc
   await page.waitForSelector('#day-reference');
   assert.equal(await page.locator('#day-totals .summary-ring__fill').count(), 1);
   assert.match(await page.textContent('#day-reference'), /daily energy for your goal is about 2,740 kcal/);
+  await page.goto(`${BASE}#overview`);
+  assert.match(await page.textContent('.dashboard-nutrition'), /2,480 kcal left/);
+  assert.ok(Number(await page.locator('.calorie-apple__fill').getAttribute('height')) > 0);
+
+  await page.goto(`${BASE}#workouts`);
+  await page.selectOption('#workout-activity', 'walk-brisk');
+  await page.fill('#workout-duration', '20');
+  await page.check('#workout-form [name="showEstimate"]');
+  await page.click('#workout-submit');
+  await page.goto(`${BASE}#overview`);
+  const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('letsgetfit.data')));
+  const exercise = saved.workouts[0].estimatedActiveKcal;
+  assert.ok(exercise > 0);
+  assert.match(await page.textContent('.dashboard-nutrition'), /2,480 kcal left/);
+  await page.check('#dashboard-exercise-credit');
+  await page.locator('.dashboard-nutrition').getByText(`${(2480 + exercise).toLocaleString('en-IE')} kcal left`).waitFor();
+  await page.uncheck('#dashboard-exercise-credit');
+
+  await page.goto(`${BASE}#food`);
+  await page.locator('[data-meal="breakfast"]').getByRole('button', { name: 'Edit Toast' }).click();
+  await page.fill('#amount-g', '1200');
+  await page.click('#amount-save');
+  await page.goto(`${BASE}#overview`);
+  await page.locator('.calorie-apple--over').waitFor();
+  assert.match(await page.textContent('.dashboard-nutrition'), /380 kcal over/);
   assert.deepEqual(errors, []);
   await context.close();
 });
@@ -997,7 +1025,7 @@ await check('goals: the energy floor is shown, and gain goals are capped at the 
   const { page, context } = await freshPage();
   await fillMetric(page, { age: '70', height: '160', weight: '58', sex: 'female', activity: 'mostly-seated' });
   await page.waitForSelector('#goal-card');
-  await page.click('#goal-card summary');
+  assert.equal(await page.locator('#goal-card details').getAttribute('open'), '');
   await page.check('input[name="goalType"][value="lose"]');
   await page.fill('#goal-kg', '55');
   await page.selectOption('#goal-rate', '0.5');

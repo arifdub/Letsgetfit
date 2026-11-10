@@ -139,6 +139,7 @@ export function goalCard(store, profile, units) {
     try {
       store.saveProfile({ ...stripMeta(store.profile), goal: { ...result.value, setAt: new Date().toISOString() } });
       toast('Goal saved.');
+      if (!profile.goal) document.getElementById('overview-title').focus();
     } catch (error) {
       toast(error.message, 'error');
     }

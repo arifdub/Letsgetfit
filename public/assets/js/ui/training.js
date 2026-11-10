@@ -264,7 +264,7 @@ export function initTraining(store) {
         ),
       ),
       field('notes', 'Notes (optional)', bind(h('input', { id: 'session-notes', class: 'input', type: 'text', maxlength: '300', value: draft.notes }), (v) => (draft.notes = v))),
-      h('div', { class: 'field' }, h('label', { class: 'checkbox' }, bind(h('input', { type: 'checkbox', id: 'session-estimate', checked: Boolean(draft.showEstimate) }), (v) => (draft.showEstimate = v)), 'Show estimated active calories'), h('p', { class: 'hint' }, 'A rough average for resistance training (3.5 MET). It is shown on the session only and never added to your daily estimate.')),
+      h('div', { class: 'field' }, h('label', { class: 'checkbox' }, bind(h('input', { type: 'checkbox', id: 'session-estimate', checked: Boolean(draft.showEstimate) }), (v) => (draft.showEstimate = v)), 'Show estimated active calories'), h('p', { class: 'hint' }, 'A rough average for resistance training (3.5 MET). The Dashboard can include this in today’s budget if it was extra exercise.')),
       h('div', { class: 'form__actions' }, save, discard),
     );
     form.addEventListener('submit', (event) => {

@@ -159,7 +159,7 @@ export function initWorkouts(store, { onEditSession } = {}) {
             estimate =
               entry.estimatedActiveKcal === null || entry.estimatedActiveKcal === undefined
                 ? h('p', { class: 'entry__meta muted' }, 'No estimate available')
-                : h('p', { class: 'entry__meta' }, `About ${formatNumber(entry.estimatedActiveKcal)} kcal active energy (estimate, not added to your daily figure)`);
+                : h('p', { class: 'entry__meta' }, `About ${formatNumber(entry.estimatedActiveKcal)} kcal active energy (estimate, not added automatically)`);
           }
           const isSession = entry.type === 'session';
           const stats = isSession ? sessionStats(entry) : null;
