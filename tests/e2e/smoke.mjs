@@ -987,7 +987,7 @@ await check('goals: healthy range, loss plan, safeguards, and Food page referenc
   await page.click('#custom-food-form button[type="submit"]');
   await page.click('#amount-save');
   await page.waitForSelector('#day-reference');
-  assert.equal(await page.locator('.summary-ring__fill').count(), 1);
+  assert.equal(await page.locator('#day-totals .summary-ring__fill').count(), 1);
   assert.match(await page.textContent('#day-reference'), /daily energy for your goal is about 2,740 kcal/);
   assert.deepEqual(errors, []);
   await context.close();
