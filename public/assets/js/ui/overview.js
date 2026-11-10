@@ -5,6 +5,7 @@ import { validateProfile, checkEligibility, ELIGIBLE_AGE } from '../lib/validate
 import { cmToFeetInches, kgToStonePounds, roundTo } from '../lib/units.js';
 import { $, $$, h, formatNumber, formatKcal, formatKj, formatWeight, formatHeight, applyUnitsVisibility, showFormErrors, clearFormErrors, toast } from './dom.js';
 import { methodsSection } from './methods.js';
+import { goalCard } from './goals.js';
 
 const FIELD_LABELS = {
   ageYears: 'Age',
@@ -120,7 +121,7 @@ export function initOverview(store) {
       applyUnitsVisibility(form, units);
     }
     hadProfile = Boolean(profile);
-    if (!showForm) results.replaceChildren(...renderResults(profile, store.units, startEditing));
+    if (!showForm) results.replaceChildren(...renderResults(profile, store.units, startEditing, store));
   }
 
   store.subscribe(() => {
@@ -157,7 +158,7 @@ function fillForm(form, profile, units) {
   set('pregnancy', profile.pregnantOrBreastfeeding ? 'yes' : 'no');
 }
 
-function renderResults(profile, units, onEdit) {
+function renderResults(profile, units, onEdit, store) {
   const level = getActivityLevel(profile.activityLevel);
   const eligibility = checkEligibility(profile);
   const basedOn = h(
@@ -236,23 +237,12 @@ function renderResults(profile, units, onEdit) {
     ),
   );
 
-  const targetsCard = h(
-    'div',
-    { class: 'card notice notice--info' },
-    h('h2', {}, 'Weight loss or gain targets'),
-    h(
-      'p',
-      {},
-      'LetsGetFit shows maintenance only for now. Personalised targets for losing or gaining weight need extra eligibility checks and safeguards, and will be added only after a separate review.',
-    ),
-  );
-
   return [
     h('div', { class: 'results', 'aria-live': 'polite' }, stats, estimateNote),
     nutritionCard(example, maintenanceShown, profile.weightKg),
     foodCard(),
+    goalCard(store, profile, units),
     bmiCard,
-    targetsCard,
     basedOn,
     methodsSection(),
   ];

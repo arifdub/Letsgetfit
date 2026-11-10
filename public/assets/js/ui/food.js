@@ -15,7 +15,9 @@ import {
 import { toLocalDateString, parseLocalDate, formatLocalDate, isValidLocalDate } from '../lib/dates.js';
 import { getActivityLevel, mifflinStJeor, maintenanceEnergy, roundEnergyForDisplay } from '../lib/energy.js';
 import { checkEligibility } from '../lib/validate.js';
-import { checkSearchAvailable, searchFoods } from '../api/foods.js';
+import { planGoal } from '../lib/goals.js';
+import { checkSearchAvailable, checkScanAvailable, searchFoods } from '../api/foods.js';
+import { scanPanel } from './scan.js';
 import { $, h, formatNumber, toast, confirmAction, emptyState, readForm, showFormErrors, clearFormErrors } from './dom.js';
 
 const mealLabel = (id) => MEALS.find((m) => m.id === id)?.label ?? id;
@@ -55,9 +57,14 @@ export function initFood(store) {
   let lastSearch = { query: '', type: 'all', results: null, error: null };
   let searchAvailable = null;
 
+  let scanAvailable = false;
   checkSearchAvailable().then((available) => {
     searchAvailable = available;
     if (state?.step === 'choose' && state.tab === 'search') renderPanel();
+  });
+  checkScanAvailable().then((available) => {
+    scanAvailable = available;
+    if (state?.step === 'choose') renderPanel();
   });
 
   /* ---------------- Date bar ---------------- */
@@ -78,8 +85,9 @@ export function initFood(store) {
   function maintenanceKcal() {
     const p = store.profile;
     if (!p || !checkEligibility(p).eligible || !getActivityLevel(p.activityLevel)) return null;
+    if (p.goal && p.goal.type !== 'maintain') return { kcal: planGoal(p, p.goal).allowedKcal, goal: true };
     const ree = mifflinStJeor({ weightKg: p.weightKg, heightCm: p.heightCm, ageYears: p.ageYears, sex: p.sex });
-    return roundEnergyForDisplay(maintenanceEnergy(ree, p.activityLevel));
+    return { kcal: roundEnergyForDisplay(maintenanceEnergy(ree, p.activityLevel)), goal: false };
   }
 
   function renderTotals(entries) {
@@ -116,7 +124,15 @@ export function initFood(store) {
           { class: 'stat__value', id: 'day-energy' },
           energyMissing === count ? 'Energy unknown' : `${energyMissing ? 'at least ' : ''}${formatNumber(Math.round(totals.energy))} kcal`,
         ),
-        maintenance ? h('p', { class: 'muted' }, `Your maintenance estimate is about ${formatNumber(maintenance)} kcal a day. Daily intake naturally varies.`) : null,
+        maintenance
+          ? h(
+              'p',
+              { class: 'muted', id: 'day-reference' },
+              maintenance.goal
+                ? `Your daily energy for your goal is about ${formatNumber(maintenance.kcal)} kcal. Daily intake naturally varies; the weekly trend matters more.`
+                : `Your maintenance estimate is about ${formatNumber(maintenance.kcal)} kcal a day. Daily intake naturally varies.`,
+            )
+          : null,
         incompleteAny
           ? h('p', { class: 'notice-inline', id: 'totals-incomplete' }, 'Some foods have missing nutrient values, so some totals are incomplete. Missing values are shown as unknown, not zero.')
           : null,
@@ -250,6 +266,7 @@ export function initFood(store) {
   function tabs() {
     const items = [
       ['search', 'Search'],
+      ...(scanAvailable ? [['scan', 'Scan photo']] : []),
       ['mine', 'My foods'],
       ['new', 'New food'],
     ];
@@ -296,7 +313,25 @@ export function initFood(store) {
 
   function renderChoose() {
     const body = [];
-    if (state.tab === 'search') {
+    if (state.tab === 'scan' && scanAvailable) {
+      body.push(
+        scanPanel({
+          store,
+          meal: state.meal,
+          localDate: currentDate,
+          saveToLibrary,
+          onSaved: () => {
+            closePanel();
+            render();
+          },
+          onManual: () => {
+            state = { ...state, tab: searchAvailable === false ? 'mine' : 'search' };
+            renderPanel();
+            $('#food-panel-title').focus();
+          },
+        }),
+      );
+    } else if (state.tab === 'search') {
       if (searchAvailable === false) {
         body.push(
           h(

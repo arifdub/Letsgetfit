@@ -46,6 +46,22 @@ const METHODS = [
     ],
   },
   {
+    title: 'Goals: healthy weight range and daily energy',
+    rows: [
+      ['Healthy range', 'BMI 18.5 to 24.9 × height (m)². This is a screening range, not an ideal weight.'],
+      ['Daily energy', 'Maintenance estimate − weekly rate × 7,700 kcal per kg ÷ 7 (or + for gain, with the surplus capped at 500 kcal).'],
+      ['Safeguards', 'No loss target below the healthy range; loss at most 1% of body weight and 1 kg a week; never below 1,200 kcal (female coefficient) or 1,500 kcal (male coefficient); not for under-20s or during pregnancy or breastfeeding.'],
+      ['Limits', 'The 7,700 kcal/kg rule overestimates long-term change because the body adapts (Hall et al., Lancet 2011). Review your trend after 3–4 weeks.'],
+    ],
+  },
+  {
+    title: 'Meal photo scan',
+    rows: [
+      ['How it works', 'An AI model (OpenAI) suggests the foods and an amount range. You choose the database match and amount for each item, and nutrients come from USDA FoodData Central for what you confirm.'],
+      ['Limits', 'Photos cannot show hidden oils, sauces, exact amounts or allergens. Suggestions can be wrong, so check every item.'],
+    ],
+  },
+  {
     title: 'Workout active-energy estimates',
     rows: [
       ['Equation', '(MET − 1) × weight (kg) × duration (hours). 1 MET is taken as 1 kcal per kg per hour; subtracting 1 removes resting energy.'],
