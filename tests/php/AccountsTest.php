@@ -62,3 +62,13 @@ test('admin setting validation and config overrides', function () {
     eq($over->string('db_password'), '', 'unknown keys are ignored');
     eq($config->string('openai_model'), 'gpt-4o-mini', 'the original is unchanged');
 });
+
+test('mail failures are reduced to a reason code without personal data', function () {
+    $c = [\LetsGetFit\Mail\SmtpMailer::class, 'category'];
+    eq($c('SMTP Error: Could not authenticate.'), 'auth');
+    eq($c('SMTP Error: Could not connect to SMTP host. Connection refused'), 'connect');
+    eq($c('stream_socket_enable_crypto(): SSL operation failed, certificate verify failed'), 'tls');
+    eq($c('The following From address failed: x@example.ie'), 'sender');
+    eq($c('SMTP Error: The following recipients failed: y@example.ie'), 'recipient');
+    eq($c('something else'), 'other');
+});

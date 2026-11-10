@@ -223,6 +223,11 @@ final class Api
             'storageWritable' => $storageOk,
             'foodSearch' => $foodSearch,
             'accounts' => $config->bool('accounts_enabled') ? 'enabled' : 'disabled',
+            // How email is sent, and whether the last attempt worked (a reason code only).
+            'mail' => $config->bool('accounts_enabled') ? [
+                'transport' => $config->string('mail_transport') === 'smtp' ? 'smtp' : 'outbox',
+                'last' => SmtpMailer::lastStatus($config->string('storage_dir')),
+            ] : null,
             'aiScan' => trim($config->string('openai_api_key')) === '' || !$config->bool('scan_enabled') ? 'disabled' : (ImageProcessor::available() && $curl ? 'enabled' : 'unavailable'),
             'gd' => ImageProcessor::available(),
             'pdoMysql' => extension_loaded('pdo_mysql'),

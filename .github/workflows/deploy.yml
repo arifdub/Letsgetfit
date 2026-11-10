@@ -122,6 +122,21 @@ jobs:
           SITE_URL: ${{ vars.SITE_URL || 'https://letsgetfit.site/' }}
         run: bash scripts/deploy-ftp.sh
 
+      - name: Check the email settings (logs in to the mail server, sends nothing)
+        if: ${{ !inputs.dry_run }}
+        continue-on-error: true
+        env:
+          ACCOUNTS_ENABLED: ${{ vars.ACCOUNTS_ENABLED || secrets.ACCOUNTS_ENABLED }}
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_SECURE: ${{ secrets.SMTP_SECURE }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          MAIL_FROM: ${{ secrets.MAIL_FROM }}
+        run: |
+          if [ -z "$ACCOUNTS_ENABLED" ]; then echo "Accounts are off: email not checked."; exit 0; fi
+          php scripts/smtp-check.php || echo "::warning::The email settings did not work, so login codes cannot be sent. See the smtp-check lines above."
+
       - name: Check the live site
         if: ${{ !inputs.dry_run }}
         env:
@@ -146,9 +161,6 @@ jobs:
             echo "::notice::AI meal scan is switched ON."
           elif grep -q '"aiScan":"unavailable"' <<<"$health"; then
             echo "::warning::An OpenAI key is set but the server cannot process images (the PHP GD extension may be missing). Photo scanning stays hidden."
-          fi
-          if grep -q '"accounts":"enabled"' <<<"$health"; then
-            echo "::notice::Accounts are switched ON. Make sure migrations have been run (docs/DATABASE.md)."
           fi
           if grep -q '"foodSearch":"demo-key"' <<<"$health"; then
             echo "::warning::Food search is using the public DEMO_KEY. Add an FDC_API_KEY repository secret for normal use."
