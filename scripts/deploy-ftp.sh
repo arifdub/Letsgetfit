@@ -22,6 +22,7 @@
 #   SITE_URL         live address, default https://letsgetfit.site/ (used to prove the folder)
 #   FDC_API_KEY      USDA FoodData Central key, written to the private settings file
 #   APP_HASH_SECRET  optional secret for hashing visitor IPs in rate limits (random if unset)
+#   OPENAI_API_KEY   switches on the AI meal scan (with OPENAI_MODEL, SCAN_DAILY_LIMIT)
 #   ACCOUNTS_ENABLED "true" to switch on optional accounts, with DB_* , SMTP_* and MAIL_FROM
 #                    (see scripts/write-config.php and docs/DATABASE.md). Off by default.
 #
@@ -94,10 +95,15 @@ if [ -n "${APP_HASH_SECRET:-}" ] && ! [[ "$APP_HASH_SECRET" =~ ^[A-Za-z0-9_-]{16
   fail "APP_HASH_SECRET must be 16+ letters, numbers, - or _."
 fi
 command -v php >/dev/null 2>&1 || fail "php is needed to build the server settings file."
+if [ -n "${OPENAI_API_KEY:-}" ] || [ "${ACCOUNTS_ENABLED:-}" = "true" ]; then
+  # Fail before uploading anything if the settings would be invalid or incomplete.
+  SITE_URL="${SITE_URL:-https://letsgetfit.site/}" php "$REPO_ROOT/scripts/write-config.php" >/dev/null || fail "the server settings are not valid (see the message above)."
+fi
 if [ "${ACCOUNTS_ENABLED:-}" = "true" ]; then
-  # Fail before uploading anything if the accounts configuration is incomplete.
-  SITE_URL="${SITE_URL:-https://letsgetfit.site/}" php "$REPO_ROOT/scripts/write-config.php" >/dev/null || fail "accounts are switched on but not fully configured."
   info "accounts will be switched on (ACCOUNTS_ENABLED=true). Run database migrations by hand before people use them: see docs/DATABASE.md."
+fi
+if [ -n "${OPENAI_API_KEY:-}" ]; then
+  info "photo scanning will be switched on (OPENAI_API_KEY is set)."
 fi
 if [ -d "$REPO_ROOT/server" ] && [ ! -f "$REPO_ROOT/server/vendor/autoload.php" ]; then
   echo "::warning::server/vendor is missing (run composer install --no-dev in server/). Email sending for accounts needs it."
@@ -275,7 +281,7 @@ deploy_private() {
     || fail "could not upload the server code to $private_root/app."
   info "server code uploaded to $private_root/app (outside the web root)."
 
-  if [ -n "${FDC_API_KEY:-}" ] || [ "${ACCOUNTS_ENABLED:-}" = "true" ]; then
+  if [ -n "${FDC_API_KEY:-}" ] || [ -n "${OPENAI_API_KEY:-}" ] || [ "${ACCOUNTS_ENABLED:-}" = "true" ]; then
     :
   elif run_lftp "cd \"$target\"" "cd .." "cls -1 $private_root/config/app.php" >/dev/null 2>&1; then
     info "kept the existing server settings (no FDC_API_KEY or ACCOUNTS_ENABLED secret set)."

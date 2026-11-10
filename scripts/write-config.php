@@ -9,6 +9,7 @@ declare(strict_types=1);
 // Food search:  FDC_API_KEY, APP_HASH_SECRET
 // Accounts:     ACCOUNTS_ENABLED=true, DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD,
 //               SMTP_HOST, SMTP_PORT, SMTP_SECURE, SMTP_USER, SMTP_PASSWORD, MAIL_FROM, MAIL_FROM_NAME
+// Meal scan:    OPENAI_API_KEY, OPENAI_MODEL, SCAN_DAILY_LIMIT
 // Site:         SITE_URL
 
 function env(string $name, string $default = ''): string
@@ -43,6 +44,22 @@ $config = [
     'app_url' => $siteUrl,
     'accounts_enabled' => false,
 ];
+
+$openAiKey = env('OPENAI_API_KEY');
+if ($openAiKey !== '') {
+    if (!preg_match('/^sk-[A-Za-z0-9_-]{20,300}$/', $openAiKey)) {
+        fail('OPENAI_API_KEY does not look like an OpenAI API key (sk-...).');
+    }
+    $model = env('OPENAI_MODEL', 'gpt-4o-mini');
+    if (!preg_match('/^[A-Za-z0-9._:-]{1,64}$/', $model)) {
+        fail('OPENAI_MODEL has an unexpected format.');
+    }
+    $daily = env('SCAN_DAILY_LIMIT', '100');
+    if (!ctype_digit($daily) || (int) $daily < 1 || (int) $daily > 10000) {
+        fail('SCAN_DAILY_LIMIT must be a whole number from 1 to 10000.');
+    }
+    $config += ['openai_api_key' => $openAiKey, 'openai_model' => $model, 'scan_daily_limit' => (int) $daily];
+}
 
 if (env('ACCOUNTS_ENABLED') === 'true') {
     $missing = array_values(array_filter(

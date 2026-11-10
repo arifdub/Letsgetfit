@@ -94,6 +94,10 @@ jobs:
           # Food search: written to the private settings file outside the web root.
           FDC_API_KEY: ${{ secrets.FDC_API_KEY }}
           APP_HASH_SECRET: ${{ secrets.APP_HASH_SECRET }}
+          # AI meal scan (Phase 5): on only when OPENAI_API_KEY is set.
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_MODEL: ${{ vars.OPENAI_MODEL }}
+          SCAN_DAILY_LIMIT: ${{ vars.SCAN_DAILY_LIMIT }}
           # Optional accounts (Phase 4): OFF unless the ACCOUNTS_ENABLED variable is 'true' and
           # every database and email secret below is set. See docs/DATABASE.md and docs/PRIVACY.md.
           ACCOUNTS_ENABLED: ${{ vars.ACCOUNTS_ENABLED }}
@@ -128,6 +132,11 @@ jobs:
           echo "Server health: $health"
           if ! grep -q '"ok":true' <<<"$health"; then
             echo "::warning::$SITE_URL/api/health.php did not answer OK. Food search will be unavailable (manual entry still works). See 'Server code for food search' in docs/DEPLOY-CPANEL.md."
+          fi
+          if grep -q '"aiScan":"enabled"' <<<"$health"; then
+            echo "::notice::AI meal scan is switched ON."
+          elif grep -q '"aiScan":"unavailable"' <<<"$health"; then
+            echo "::warning::An OpenAI key is set but the server cannot process images (the PHP GD extension may be missing). Photo scanning stays hidden."
           fi
           if grep -q '"accounts":"enabled"' <<<"$health"; then
             echo "::notice::Accounts are switched ON. Make sure migrations have been run (docs/DATABASE.md)."

@@ -356,3 +356,15 @@ test('switching accounts on with missing secrets stops before connecting', async
   assert.match(r.stderr, /missing: DB_USER DB_PASSWORD SMTP_HOST SMTP_USER SMTP_PASSWORD MAIL_FROM/);
   assert.doesNotMatch(r.stdout, /logged in/);
 });
+
+test('meal scan settings: OpenAI key validated and written; off without a key', () => {
+  const run = (env) => spawnSync('php', [path.join(REPO, 'scripts', 'write-config.php')], { encoding: 'utf8', env: { PATH: process.env.PATH, ...env } });
+  const ok = run({ OPENAI_API_KEY: 'sk-proj-abcdefghijklmnopqrstuvwxyz012345', OPENAI_MODEL: 'gpt-4o-mini', SCAN_DAILY_LIMIT: '50' });
+  assert.equal(ok.status, 0, ok.stderr);
+  assert.match(ok.stdout, /'openai_api_key' => 'sk-proj-abcdefghijklmnopqrstuvwxyz012345'/);
+  assert.match(ok.stdout, /'scan_daily_limit' => 50/);
+  assert.match(run({ OPENAI_API_KEY: "sk-x'; evil();" }).stderr, /does not look like an OpenAI API key/);
+  assert.match(run({ OPENAI_API_KEY: 'sk-proj-abcdefghijklmnopqrstuvwxyz012345', SCAN_DAILY_LIMIT: '0' }).stderr, /SCAN_DAILY_LIMIT/);
+  assert.match(run({ OPENAI_API_KEY: 'sk-proj-abcdefghijklmnopqrstuvwxyz012345', OPENAI_MODEL: 'bad model!' }).stderr, /OPENAI_MODEL/);
+  assert.doesNotMatch(run({}).stdout, /openai_api_key/);
+});
