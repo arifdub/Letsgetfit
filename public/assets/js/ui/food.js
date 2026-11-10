@@ -17,6 +17,7 @@ import { getActivityLevel, mifflinStJeor, maintenanceEnergy, roundEnergyForDispl
 import { checkEligibility } from '../lib/validate.js';
 import { planGoal } from '../lib/goals.js';
 import { checkSearchAvailable, checkScanAvailable, searchFoods } from '../api/foods.js';
+import { summaryBar, summaryRing } from './chart.js';
 import { scanPanel } from './scan.js';
 import { $, h, formatNumber, toast, confirmAction, emptyState, readForm, showFormErrors, clearFormErrors } from './dom.js';
 
@@ -53,6 +54,7 @@ export function initFood(store) {
   let currentDate = toLocalDateString();
   let state = null; // panel state
   let lastTrigger = null;
+  let nutrientsOpen = false;
   let searchController = null;
   let lastSearch = { query: '', type: 'all', results: null, error: null };
   let searchAvailable = null;
@@ -90,13 +92,13 @@ export function initFood(store) {
     return { kcal: roundEnergyForDisplay(maintenanceEnergy(ree, p.activityLevel)), goal: false };
   }
 
-  function renderTotals(entries) {
+  function renderTotals(entries, day) {
     const container = $('#food-totals');
     if (entries.length === 0) {
-      container.replaceChildren();
+      container.replaceChildren(emptyState('Nothing logged for this day', 'Choose a meal below to add food.'));
       return;
     }
-    const { totals, missing, count } = sumNutrients(entries);
+    const { totals, missing, count } = day;
     const incompleteAny = NUTRIENTS.some((n) => missing[n.key] > 0);
     const rows = NUTRIENTS.map((n) => {
       const allMissing = missing[n.key] === count;
@@ -114,32 +116,52 @@ export function initFood(store) {
     });
     const maintenance = maintenanceKcal();
     const energyMissing = missing.energy;
+    const logged = Math.round(totals.energy);
+    const comparison = energyMissing === 0 && maintenance?.kcal > 0;
+    const difference = comparison ? maintenance.kcal - logged : 0;
+    const energy = h(
+      'p',
+      { class: 'stat__value', id: 'day-energy' },
+      energyMissing === count ? 'Energy unknown' : `${energyMissing ? 'At least ' : ''}${formatNumber(logged)} kcal`,
+    );
+    const macros = NUTRIENTS.filter((n) => n.group === 'core' && n.key !== 'energy').map((n) =>
+      h('div', { class: `macro macro--${n.key}` },
+        h('dt', {}, n.key === 'carbohydrate' ? 'Carbs' : n.label),
+        h('dd', {}, missing[n.key] === count ? 'Unknown' : `${missing[n.key] ? '≥ ' : ''}${fmtNutrient(n, totals[n.key])}`),
+      ),
+    );
     container.replaceChildren(
       h(
-        'div',
-        { class: 'card', id: 'day-totals' },
-        h('h2', {}, 'Day total'),
-        h(
-          'p',
-          { class: 'stat__value', id: 'day-energy' },
-          energyMissing === count ? 'Energy unknown' : `${energyMissing ? 'at least ' : ''}${formatNumber(Math.round(totals.energy))} kcal`,
-        ),
-        maintenance
-          ? h(
-              'p',
-              { class: 'muted', id: 'day-reference' },
+        'section',
+        { class: 'card diary-summary', id: 'day-totals', 'aria-labelledby': 'day-totals-title' },
+        h('h2', { id: 'day-totals-title' }, 'Daily nutrition'),
+        h('div', { class: 'diary-summary__main' },
+          comparison ? h('div', { class: 'diary-gauge' },
+            summaryRing(logged / maintenance.kcal, difference < 0),
+            h('span', { class: 'diary-gauge__label', 'aria-hidden': 'true' },
+              h('strong', {}, formatNumber(Math.abs(difference))),
+              h('span', {}, difference < 0 ? 'kcal over' : 'kcal left'),
+            ),
+          ) : null,
+          h('div', { class: 'diary-summary__energy' },
+            h('p', { class: 'summary-label' }, 'Energy logged'),
+            energy,
+            comparison ? h('p', { class: 'visually-hidden' }, `${formatNumber(Math.abs(difference))} kcal ${difference < 0 ? 'over your estimate' : 'left to your estimate'}`) : null,
+            maintenance ? h('p', { class: 'muted small', id: 'day-reference' },
               maintenance.goal
-                ? `Your daily energy for your goal is about ${formatNumber(maintenance.kcal)} kcal. Daily intake naturally varies; the weekly trend matters more.`
-                : `Your maintenance estimate is about ${formatNumber(maintenance.kcal)} kcal a day. Daily intake naturally varies.`,
-            )
-          : null,
+                ? `Your daily energy for your goal is about ${formatNumber(maintenance.kcal)} kcal.`
+                : `Your maintenance estimate is about ${formatNumber(maintenance.kcal)} kcal a day.`,
+            ) : null,
+          ),
+        ),
+        h('dl', { class: 'macro-grid', 'aria-label': 'Macronutrients and fibre' }, macros),
         incompleteAny
-          ? h('p', { class: 'notice-inline', id: 'totals-incomplete' }, 'Some foods have missing nutrient values, so some totals are incomplete. Missing values are shown as unknown, not zero.')
+          ? h('p', { class: 'muted small', id: 'totals-incomplete' }, 'Some nutrient values are unknown. Totals marked ≥ include only known values.')
           : null,
         h(
           'details',
-          { class: 'disclosure', open: true },
-          h('summary', {}, 'Nutrients'),
+          { class: 'disclosure', open: nutrientsOpen, ontoggle: (event) => { nutrientsOpen = event.currentTarget.open; } },
+          h('summary', {}, 'All nutrients'),
           h(
             'div',
             { class: 'table-wrap' },
@@ -156,12 +178,16 @@ export function initFood(store) {
     );
   }
 
-  function renderMeals(entries) {
+  function renderMeals(entries, day) {
     $('#food-meals').replaceChildren(
       ...MEALS.map((meal) => {
         const list = entries.filter((e) => e.meal === meal.id);
         const mealKcal = sumNutrients(list);
-        const addButton = h('button', { type: 'button', class: 'button button--small', dataset: { addMeal: meal.id } }, `Add to ${meal.label.toLowerCase()}`);
+        const showShare = list.length > 0 && day.missing.energy === 0 && day.totals.energy > 0;
+        const addButton = h('button', {
+          type: 'button', class: 'button button--small meal__add', dataset: { addMeal: meal.id },
+          'aria-label': `Add to ${meal.label.toLowerCase()}`,
+        }, h('span', { 'aria-hidden': 'true' }, '+'), ' Add');
         addButton.addEventListener('click', () => openPanel({ step: 'choose', meal: meal.id, tab: searchAvailable === false ? 'mine' : 'search' }, addButton));
         return h(
           'section',
@@ -170,8 +196,18 @@ export function initFood(store) {
             'div',
             { class: 'meal__head' },
             h('h2', { id: `meal-${meal.id}` }, meal.label),
-            list.length ? h('span', { class: 'muted' }, mealKcal.missing.energy ? `at least ${kcalText(mealKcal.totals.energy)}` : kcalText(mealKcal.totals.energy)) : null,
+            h('div', { class: 'meal__actions' },
+              list.length ? h('span', { class: 'muted small' },
+                mealKcal.missing.energy === list.length ? 'Energy unknown'
+                  : `${mealKcal.missing.energy ? 'At least ' : ''}${kcalText(mealKcal.totals.energy)}`,
+              ) : null,
+              addButton,
+            ),
           ),
+          showShare ? h('div', { class: 'meal-share' },
+            summaryBar(mealKcal.totals.energy / day.totals.energy),
+            h('span', {}, `${formatNumber(mealKcal.totals.energy / day.totals.energy * 100)}% of day`),
+          ) : null,
           list.length
             ? h(
                 'ul',
@@ -196,8 +232,7 @@ export function initFood(store) {
                   );
                 }),
               )
-            : h('p', { class: 'muted' }, 'Nothing added yet.'),
-          addButton,
+            : null,
         );
       }),
     );
@@ -211,11 +246,9 @@ export function initFood(store) {
     $('#food-today').hidden = currentDate === today;
     $('#food-date-label').textContent = currentDate === today ? `Today, ${formatLocalDate(currentDate)}` : formatLocalDate(currentDate);
     const entries = store.diaryFor(currentDate);
-    renderTotals(entries);
-    renderMeals(entries);
-    if (entries.length === 0) {
-      $('#food-totals').replaceChildren(emptyState('Nothing logged for this day', 'Use the buttons below to add what you ate. You can search the food database or add your own foods.'));
-    }
+    const day = sumNutrients(entries);
+    renderTotals(entries, day);
+    renderMeals(entries, day);
   }
 
   async function removeEntry(entry) {

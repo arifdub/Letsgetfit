@@ -134,10 +134,10 @@ await check('calculates representative estimates (30 y, 180 cm, 80 kg, male, mod
   assert.match(await page.textContent('#stat-bmi .stat__value'), /24\.7/);
   assert.match(await page.textContent('#stat-bmi .stat__sub'), /Healthy weight/);
   // 3290 kcal: protein 15 % = 123 g; fat 30 % = 110 g; fibre 25 g; carbohydrate (3290−493.5−987−50)/4 = 440 g
-  assert.match(await page.textContent('tr[data-nutrient="protein"]'), /123 g/);
-  assert.match(await page.textContent('tr[data-nutrient="fat"]'), /110 g/);
-  assert.match(await page.textContent('tr[data-nutrient="carbohydrate"]'), /440 g/);
-  assert.match(await page.textContent('tr[data-nutrient="fibre"]'), /25 g/);
+  assert.match(await page.textContent('#nutrition-example .macro--protein dd'), /123 g/);
+  assert.match(await page.textContent('#nutrition-example .macro--fat dd'), /110 g/);
+  assert.match(await page.textContent('#nutrition-example .macro--carbohydrate dd'), /440 g/);
+  assert.match(await page.textContent('#nutrition-example .macro--fibre dd'), /25 g/);
   assert.deepEqual(errors, []);
   await context.close();
 });
@@ -417,6 +417,9 @@ await check('food: empty day, search, add with grams, totals and persistence', a
   assert.match(await page.textContent('[data-meal="breakfast"] .entry'), /150 g · 78 kcal/);
   assert.match(await page.textContent('#day-energy'), /^78 kcal$/);
   assert.equal(await page.locator('#totals-incomplete').count(), 0, 'all nutrients known');
+  assert.equal(await page.locator('.meal-share svg').count(), 1);
+  assert.equal(await page.locator('#nutrient-table').isVisible(), false);
+  await page.click('#day-totals summary');
   assert.match(await page.textContent('tr[data-nutrient="potassium"]'), /161 mg/);
   // Stored with source, ID, per-100 g values, units, grams and a nutrient snapshot.
   const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('letsgetfit.data')));
@@ -454,6 +457,7 @@ await check('food: custom food with unknown values flags incomplete totals', asy
   assert.match(await page.textContent('[data-meal="lunch"] .entry'), /40 g · 92 kcal/);
   assert.match(await page.textContent('[data-meal="lunch"] .entry'), /4 of 10 nutrients known/);
   await page.waitForSelector('#totals-incomplete');
+  assert.equal(await page.locator('.meal-share svg').count(), 1, 'energy is known even when fibre is missing');
   assert.match(await page.textContent('tr[data-nutrient="fibre"]'), /Unknown/);
   assert.match(await page.textContent('tr[data-nutrient="fibre"]'), /No data/);
   // Add an apple (complete data): fibre becomes "at least", flagged incomplete.
@@ -800,7 +804,7 @@ await check('progress: trend needs enough data; chart, keyboard tooltip and tabl
   await seedWeights(page, [{ localDate: isoDaysAgo(1), weightKg: 80 }, { localDate: isoDaysAgo(0), weightKg: 78 }]);
   await page.goto(`${BASE}#progress`);
   await page.waitForSelector('#weight-chart svg');
-  assert.match(await page.textContent('#trend-summary'), /change over time is shown once you have at least 4 entries/, 'a 2 kg one-day drop is not reported as change');
+  assert.match(await page.textContent('#trend-summary'), /change over time is shown once you have at least 4 entries/i, 'a 2 kg one-day drop is not reported as change');
   // 30 days of readings every other day, trending down.
   const list = [];
   for (let i = 30; i >= 0; i -= 2) list.push({ localDate: isoDaysAgo(i), weightKg: 80 + (i % 4 === 0 ? 0.6 : -0.6) - (30 - i) * 0.03 });
@@ -837,6 +841,8 @@ await check('progress: weekly summary table after logging', async () => {
   await page.click('#workout-submit');
   await page.waitForSelector('#workout-list .entry');
   await page.click('.primary-nav a[data-route="progress"]');
+  assert.equal(await page.locator('.weekly-bars__current').count(), 1);
+  await page.click('#weekly-card summary:has-text("Show weekly totals")');
   await page.waitForSelector('#weekly-table');
   const row = await page.textContent('#weekly-table tbody tr:first-child');
   assert.match(row, /This week/);
@@ -892,6 +898,7 @@ await check('goals: healthy range, loss plan, safeguards, and Food page referenc
   await page.waitForSelector('#goal-card');
   assert.match(await page.textContent('#healthy-range'), /59\.9 kg to 80\.7 kg \(BMI 18\.5 to 24\.9\)/);
   assert.match(await page.textContent('#goal-plan'), /Daily energy\s*3,290 kcal/);
+  await page.click('#goal-card summary');
   await page.check('input[name="goalType"][value="lose"]');
   // Below the healthy range is refused.
   await page.fill('#goal-kg', '55');
@@ -925,6 +932,7 @@ await check('goals: healthy range, loss plan, safeguards, and Food page referenc
   await page.click('#custom-food-form button[type="submit"]');
   await page.click('#amount-save');
   await page.waitForSelector('#day-reference');
+  assert.equal(await page.locator('.summary-ring__fill').count(), 1);
   assert.match(await page.textContent('#day-reference'), /daily energy for your goal is about 2,740 kcal/);
   assert.deepEqual(errors, []);
   await context.close();
@@ -934,6 +942,7 @@ await check('goals: the energy floor is shown, and gain goals are capped at the 
   const { page, context } = await freshPage();
   await fillMetric(page, { age: '70', height: '160', weight: '58', sex: 'female', activity: 'mostly-seated' });
   await page.waitForSelector('#goal-card');
+  await page.click('#goal-card summary');
   await page.check('input[name="goalType"][value="lose"]');
   await page.fill('#goal-kg', '55');
   await page.selectOption('#goal-rate', '0.5');

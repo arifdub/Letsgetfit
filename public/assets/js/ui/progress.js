@@ -5,7 +5,7 @@ import { ACTIVITY_GUIDELINE } from '../lib/exercises.js';
 import { formatLocalDate, parseLocalDate } from '../lib/dates.js';
 import { KG_PER_POUND } from '../lib/units.js';
 import { $, h, formatNumber, formatWeight, emptyState } from './dom.js';
-import { renderWeightChart } from './chart.js';
+import { renderWeightChart, weeklyBars } from './chart.js';
 
 const shortDate = (d) => parseLocalDate(d).toLocaleDateString('en-IE', { day: 'numeric', month: 'short' });
 
@@ -36,17 +36,20 @@ export function initProgress(store) {
     const change = trendChange(points);
     const latest = points[points.length - 1];
     body.push(
+      h('div', { class: 'trend-readout' },
+        h('p', { class: 'summary-label' }, `${TREND_WINDOW_DAYS}-day average`),
+        h('p', { class: 'stat__value' }, formatWeight(latest.trendKg, units)),
+      ),
       h(
         'p',
-        { id: 'trend-summary' },
+        { id: 'trend-summary', class: 'muted small' },
         change
-          ? `Your ${TREND_WINDOW_DAYS}-day average changed by ${signed(change.changeKg, units)} over the last ${change.days} days. It is ${formatWeight(latest.trendKg, units)} now.`
-          : `Your ${TREND_WINDOW_DAYS}-day average is ${formatWeight(latest.trendKg, units)}. A change over time is shown once you have at least 4 entries across 3 weeks or more.`,
+          ? `Your ${TREND_WINDOW_DAYS}-day average changed by ${signed(change.changeKg, units)} over the last ${change.days} days.`
+          : `A change over time is shown once you have at least 4 entries across 3 weeks or more.`,
       ),
-      h('p', { class: 'muted small' }, 'The line is the average of your entries over the previous 7 days, which smooths out day-to-day changes from fluid, food and timing. Single readings are shown as dots.'),
     );
     const chartHost = h('div', { class: 'chart-host', id: 'weight-chart' });
-    body.push(chartHost);
+    body.push(chartHost, h('p', { class: 'muted small' }, 'The 7-day average smooths out day-to-day changes from fluid, food and timing.'));
     body.push(
       h(
         'details',
@@ -76,10 +79,25 @@ export function initProgress(store) {
   function renderWeekly() {
     const weeks = weeklySummaries(store.workouts, { weeks: 8 });
     const any = weeks.some((w) => w.workouts > 0);
+    const chronological = [...weeks].reverse();
+    const [current] = weeks;
     weeklyCard.replaceChildren(
       h('h2', {}, 'Weekly summary'),
+      any ? h('div', { class: 'weekly-visual' },
+        h('div', { class: 'trend-readout' },
+          h('p', { class: 'summary-label' }, 'Active minutes this week'),
+          h('p', { class: 'stat__value' }, formatNumber(current.minutes)),
+        ),
+        h('p', { class: 'muted small' }, 'Active minutes over the last 8 weeks'),
+        weeklyBars(chronological.map((week) => week.minutes)),
+        h('div', { class: 'weekly-axis', 'aria-hidden': 'true' },
+          h('span', {}, shortDate(chronological[0].weekStart)), h('span', {}, 'This week'),
+        ),
+      ) : null,
       any
-        ? h(
+        ? h('details', { class: 'disclosure' },
+          h('summary', {}, 'Show weekly totals'),
+          h(
             'div',
             { class: 'table-wrap' },
             h(
@@ -107,13 +125,15 @@ export function initProgress(store) {
                 ),
               ),
             ),
-          )
+          ),
+        )
         : emptyState('No training logged yet', 'Log a workout or a training session on the Workouts page and your weeks will appear here.'),
-      h(
-        'p',
-        { class: 'muted small' },
-        `For comparison, the WHO guideline for adults is at least ${ACTIVITY_GUIDELINE.moderateMinutes} minutes of moderate activity a week, plus muscle strengthening on ${ACTIVITY_GUIDELINE.strengthDays} or more days. Active minutes here are the durations you logged. Weeks run Monday to Sunday.`,
-      ),
+      any ? h('details', { class: 'disclosure' },
+        h('summary', {}, 'About active minutes'),
+        h('p', { class: 'muted small' },
+          `For comparison, the WHO guideline for adults is at least ${ACTIVITY_GUIDELINE.moderateMinutes} minutes of moderate activity a week, plus muscle strengthening on ${ACTIVITY_GUIDELINE.strengthDays} or more days. Active minutes here are the durations you logged. Weeks run Monday to Sunday.`,
+        ),
+      ) : null,
     );
   }
 

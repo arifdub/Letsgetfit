@@ -596,3 +596,173 @@ input[type="radio"], input[type="checkbox"] {
   .button, .input, .choice, .segmented label { border-color: ButtonText; }
   .primary-nav a[aria-current="page"] { outline: 2px solid Highlight; }
 }
+
+/* Dashboard summaries */
+:root {
+  --radius: 22px;
+  --macro-protein: #176b54;
+  --macro-carbohydrate: #285faf;
+  --macro-fat: #985017;
+  --macro-fibre: #7150a2;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --macro-protein: #78d8b5;
+    --macro-carbohydrate: #91bcff;
+    --macro-fat: #f5ad70;
+    --macro-fibre: #c9adff;
+  }
+}
+
+main { padding-top: clamp(1.25rem, 4vw, 2.5rem); }
+.brand { letter-spacing: -0.035em; }
+.view__title {
+  font-size: clamp(1.85rem, 4.5vw, 2.65rem);
+  line-height: 1.12;
+  letter-spacing: -0.045em;
+}
+.card { padding: clamp(0.9rem, 3vw, 1.45rem); }
+.card h2 { letter-spacing: -0.025em; }
+.button--small { min-height: 44px; }
+.primary-nav a[aria-current="page"] { background: var(--surface-2); border-radius: var(--radius-small); }
+@media (min-width: 760px) {
+  .primary-nav a[aria-current="page"] { border-radius: 999px; }
+}
+
+.disclosure > summary {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  list-style: none;
+}
+.disclosure > summary::-webkit-details-marker { display: none; }
+.disclosure > summary::after {
+  content: '';
+  flex: 0 0 auto;
+  width: 0.55rem;
+  height: 0.55rem;
+  border: solid currentColor;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+  margin-inline-end: 0.25rem;
+}
+.disclosure[open] > summary::after { transform: rotate(225deg); }
+
+.results .estimate-note { margin-bottom: 1rem; }
+.overview-actions { display: flex; flex-wrap: wrap; gap: 0.65rem; margin-bottom: 1rem; }
+.overview-actions .button { text-decoration: none; }
+.overview-actions .button--primary { color: var(--on-primary); }
+.stat-grid .stat { display: grid; align-content: start; }
+.stat__mark {
+  display: grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  margin-bottom: 0.55rem;
+  border-radius: 0.65rem;
+  background: var(--surface-2);
+  color: var(--primary);
+  font-size: 1.3rem;
+  font-weight: 700;
+}
+.stat__value { letter-spacing: -0.035em; }
+.stat__details > summary { min-height: 44px; }
+#stat-maintenance { background: var(--success-bg); }
+.expandable-card.disclosure { padding-block: 0.25rem; border-top: 1px solid var(--border); }
+.reference-section { padding-block: 1rem; border-top: 1px solid var(--border); }
+
+.diary-summary {
+  background: linear-gradient(145deg, var(--success-bg), var(--surface) 56%);
+}
+.diary-summary__main {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.85rem clamp(0.85rem, 3vw, 1.75rem);
+  margin-block: 0.65rem 1rem;
+}
+.diary-summary__energy { flex: 1 1 8rem; min-width: 0; }
+.summary-label { font-size: 0.86rem; font-weight: 650; color: var(--text-muted); margin-bottom: 0.25rem; }
+.diary-gauge {
+  display: grid;
+  place-items: center;
+  width: clamp(7rem, 25vw, 9rem);
+  aspect-ratio: 1;
+}
+.diary-gauge > * { grid-area: 1 / 1; }
+.diary-gauge__label { display: grid; text-align: center; line-height: 1.15; font-size: 0.78rem; color: var(--text-muted); }
+.diary-gauge__label strong { font-size: clamp(1.3rem, 4vw, 1.75rem); color: var(--text); font-variant-numeric: tabular-nums; }
+.summary-ring { display: block; width: 100%; }
+.summary-ring circle { fill: none; stroke-width: 9; }
+.summary-ring__track { stroke: var(--border); }
+.summary-ring__fill { stroke: var(--primary); }
+.summary-ring__fill--over { stroke: var(--accent); }
+
+.macro-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem;
+  margin: 0 0 0.75rem;
+}
+.macro {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 0.85rem;
+  padding: 0.6rem 0.7rem;
+  color: var(--macro-colour);
+}
+.macro--protein { --macro-colour: var(--macro-protein); }
+.macro--carbohydrate { --macro-colour: var(--macro-carbohydrate); }
+.macro--fat { --macro-colour: var(--macro-fat); }
+.macro--fibre { --macro-colour: var(--macro-fibre); }
+.macro dt { font-size: 0.82rem; font-weight: 700; }
+.macro dd { margin: 0; color: var(--text); font-weight: 750; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.macro__share { color: var(--text-muted); font-size: 0.75rem; margin-inline-start: 0.45rem; }
+.summary-bar { display: block; width: 100%; height: 0.38rem; margin-top: 0.45rem; border-radius: 999px; }
+.summary-bar__track { fill: var(--border); }
+.summary-bar__fill { fill: var(--macro-colour); }
+.meal__head { align-items: center; }
+.meal__head h2 { margin: 0; }
+.meal__actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 0.35rem 0.7rem; }
+.meal__add { gap: 0.25rem; flex-shrink: 0; color: var(--primary); background: var(--surface-2); }
+.meal-share {
+  --macro-colour: var(--primary);
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  margin-block: 0.35rem;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+}
+.meal-share .summary-bar { flex: 1; min-width: 0; margin: 0; }
+
+.trend-readout { padding-block: 0.4rem 0.55rem; }
+.chart-frame { background: var(--surface-2); border-radius: var(--radius-small); }
+.chart-area { fill: var(--series-1); fill-opacity: 0.13; }
+.chart-trend { stroke-width: 2.5; }
+.weekly-bars { display: block; width: 100%; height: clamp(4.5rem, 15vw, 7rem); }
+.weekly-bars__track { fill: var(--surface-2); }
+.weekly-bars__previous { fill: var(--series-1); }
+.weekly-bars__current { fill: var(--primary); }
+.weekly-axis { display: flex; justify-content: space-between; color: var(--text-muted); font-size: 0.78rem; margin: 0.35rem 0 0.8rem; }
+.week-stats div { border: 1px solid var(--border); border-radius: 0.85rem; }
+@media (min-width: 360px) and (max-width: 699px) {
+  .stat-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.65rem; }
+  #stat-maintenance { grid-column: 1 / -1; }
+  #stat-ree .stat__value, #stat-bmi .stat__value { font-size: 1.55rem; }
+  .stat__details > summary { font-size: 0.82rem; gap: 0.35rem; }
+}
+@media (min-width: 520px) {
+  .macro-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+@media (min-width: 620px) {
+  #food-meals { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.75rem; align-items: start; margin-bottom: 1rem; }
+  #food-meals .meal { margin-bottom: 0; }
+}
+@media (forced-colors: active) {
+  .summary-ring__track { stroke: GrayText; }
+  .summary-ring__fill { stroke: Highlight; }
+  .summary-bar__track, .weekly-bars__track { fill: GrayText; }
+  .summary-bar__fill, .weekly-bars__current, .weekly-bars__previous { fill: Highlight; }
+  .chart-area { fill: Highlight; }
+}

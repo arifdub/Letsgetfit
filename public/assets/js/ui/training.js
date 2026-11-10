@@ -34,7 +34,11 @@ export function initTraining(store) {
         h('div', {}, h('dt', {}, 'Active minutes'), h('dd', { id: 'week-minutes' }, formatNumber(w.minutes))),
         h('div', {}, h('dt', {}, 'Strength days'), h('dd', { id: 'week-strength' }, String(w.strengthDays))),
       ),
-      h('p', { class: 'muted small' }, `WHO guideline for adults: at least ${ACTIVITY_GUIDELINE.moderateMinutes} minutes of moderate activity a week and muscle strengthening on ${ACTIVITY_GUIDELINE.strengthDays} or more days. Any activity counts towards it.`),
+      h('details', { class: 'disclosure' },
+        h('summary', {}, 'About these totals'),
+        h('p', { class: 'muted small' }, `The WHO guideline for adults is at least ${ACTIVITY_GUIDELINE.moderateMinutes} minutes of moderate activity a week and muscle strengthening on ${ACTIVITY_GUIDELINE.strengthDays} or more days. Active minutes here include all logged activity.`),
+        h('p', { class: 'muted small' }, 'Your maintenance estimate already includes your usual activity level. Logged workouts are tracked separately.'),
+      ),
     );
   }
 

@@ -6,6 +6,7 @@ import { cmToFeetInches, kgToStonePounds, roundTo } from '../lib/units.js';
 import { $, $$, h, formatNumber, formatKcal, formatKj, formatWeight, formatHeight, applyUnitsVisibility, showFormErrors, clearFormErrors, toast } from './dom.js';
 import { methodsSection } from './methods.js';
 import { goalCard } from './goals.js';
+import { summaryBar } from './chart.js';
 
 const FIELD_LABELS = {
   ageYears: 'Age',
@@ -164,7 +165,7 @@ function renderResults(profile, units, onEdit, store) {
   const basedOn = h(
     'div',
     { class: 'card based-on' },
-    h('h2', {}, 'Based on'),
+    h('h2', {}, 'Your profile'),
     h(
       'p',
       {},
@@ -193,21 +194,24 @@ function renderResults(profile, units, onEdit, store) {
     'div',
     { class: 'stat-grid' },
     statCard({
-      id: 'stat-ree',
-      label: 'Resting energy (often called BMR)',
-      value: formatKcal(reeShown),
-      sub: `${formatKj(reeShown)} per day`,
-      note: 'Energy your body uses at complete rest, estimated with the Mifflin–St Jeor equation.',
-    }),
-    statCard({
       id: 'stat-maintenance',
-      label: 'Estimated maintenance energy',
+      mark: '≈',
+      label: 'Maintenance energy',
       value: formatKcal(maintenanceShown),
       sub: `${formatKj(maintenanceShown)} per day`,
       note: `Resting energy × ${formatNumber(level.pal, 2)} for “${level.label.toLowerCase()}”. Your usual exercise is already included.`,
     }),
     statCard({
+      id: 'stat-ree',
+      mark: '↯',
+      label: 'Resting energy (BMR)',
+      value: formatKcal(reeShown),
+      sub: `${formatKj(reeShown)} per day`,
+      note: 'Energy your body uses at complete rest, estimated with the Mifflin–St Jeor equation.',
+    }),
+    statCard({
       id: 'stat-bmi',
+      mark: '◇',
       label: 'BMI',
       value: formatNumber(bmiShown, 1),
       sub: category ? `Adult screening category: ${category.label}` : '',
@@ -218,12 +222,12 @@ function renderResults(profile, units, onEdit, store) {
   const estimateNote = h(
     'p',
     { class: 'muted estimate-note' },
-    'These are estimates for groups of people. Individuals can differ from them by a few hundred kcal a day. Use them as a starting point and watch how your weight changes over several weeks.',
+    'Daily energy needs vary. Use these estimates as a starting point.',
   );
 
   const bmiCard = h(
     'div',
-    { class: 'card' },
+    { class: 'reference-section' },
     h('h2', {}, 'About your BMI'),
     h(
       'p',
@@ -239,63 +243,60 @@ function renderResults(profile, units, onEdit, store) {
 
   return [
     h('div', { class: 'results', 'aria-live': 'polite' }, stats, estimateNote),
-    nutritionCard(example, maintenanceShown, profile.weightKg),
-    foodCard(),
+    h('div', { class: 'overview-actions', 'aria-label': 'Quick links' },
+      h('a', { class: 'button button--primary', href: '#food' }, 'Open food diary'),
+      h('a', { class: 'button', href: '#progress' }, 'View progress'),
+    ),
     goalCard(store, profile, units),
-    bmiCard,
+    nutritionCard(example, maintenanceShown, profile.weightKg),
     basedOn,
-    methodsSection(),
+    h('details', { class: 'card disclosure expandable-card' },
+      h('summary', {}, 'Food examples and how estimates work'), foodCard(), bmiCard, methodsSection(),
+    ),
   ];
 }
 
-function statCard({ id, label, value, sub, note }) {
+function statCard({ id, mark, label, value, sub, note }) {
   return h(
     'div',
     { class: 'card stat', id },
+    h('span', { class: 'stat__mark', 'aria-hidden': 'true' }, mark),
     h('p', { class: 'stat__label' }, label),
     h('p', { class: 'stat__value' }, value),
     sub ? h('p', { class: 'stat__sub' }, sub) : null,
-    h('p', { class: 'stat__note' }, note),
+    h('details', { class: 'disclosure disclosure--compact stat__details' },
+      h('summary', {}, 'What this means'), h('p', { class: 'stat__note' }, note),
+    ),
   );
-}
-
-function pct(share) {
-  return `${formatNumber(Math.round(share * 100))}%`;
 }
 
 function nutritionCard(ex, kcal, weightKg) {
   const rows = [
-    ['Protein', ex.proteinG, pct(ex.proteinShare), `At least ${formatNumber(REFERENCE.proteinGPerKg, 2)} g per kg (${formatNumber(Math.round(ex.proteinFloorG))} g for you)`],
-    ['Carbohydrate', ex.carbohydrateG, pct(ex.carbohydrateShare), '45–60% of energy'],
-    ['Fat', ex.fatG, pct(ex.fatShare), '20–35% of energy'],
-    ['Fibre', ex.fibreG, pct(ex.fibreShare), '25 g a day'],
+    ['protein', 'Protein', ex.proteinG, ex.proteinShare, `At least ${formatNumber(REFERENCE.proteinGPerKg, 2)} g per kg (${formatNumber(Math.round(ex.proteinFloorG))} g for you)`],
+    ['carbohydrate', 'Carbs', ex.carbohydrateG, ex.carbohydrateShare, '45–60% of energy'],
+    ['fat', 'Fat', ex.fatG, ex.fatShare, '20–35% of energy'],
+    ['fibre', 'Fibre', ex.fibreG, ex.fibreShare, '25 g a day'],
   ];
   return h(
-    'div',
-    { class: 'card', id: 'nutrition-example' },
-    h('h2', {}, 'A maintenance-day example'),
-    h('p', {}, `One way to split about ${formatKcal(kcal)} across the day. It is an example based on adult reference ranges, not a target you need to hit.`),
-    h(
-      'div',
-      { class: 'table-wrap' },
-      h(
-        'table',
-        { class: 'table' },
-        h('caption', { class: 'visually-hidden' }, 'Example grams of each nutrient for a maintenance day'),
-        h('thead', {}, h('tr', {}, h('th', { scope: 'col' }, 'Nutrient'), h('th', { scope: 'col' }, 'Example'), h('th', { scope: 'col' }, 'Share of energy'), h('th', { scope: 'col' }, 'Reference range'))),
-        h(
-          'tbody',
-          {},
-          rows.map(([name, g, share, ref]) =>
-            h('tr', { dataset: { nutrient: name.toLowerCase() } }, h('th', { scope: 'row' }, name), h('td', {}, `${formatNumber(Math.round(g))} g`), h('td', {}, share), h('td', {}, ref)),
-          ),
+    'section',
+    { class: 'card', id: 'nutrition-example', 'aria-labelledby': 'nutrition-title' },
+    h('h2', { id: 'nutrition-title' }, 'A maintenance-day example'),
+    h('p', { class: 'muted small' }, `An example for ${formatKcal(kcal)} a day. Bars show each nutrient’s share of energy.`),
+    h('dl', { class: 'macro-grid macro-grid--example' }, rows.map(([key, name, grams, share]) =>
+      h('div', { class: `macro macro--${key}` },
+        h('dt', {}, name),
+        h('dd', {}, `${formatNumber(Math.round(grams))} g`,
+          h('span', { class: 'macro__share' }, `${formatNumber(Math.round(share * 100))}%`),
+          summaryBar(share),
         ),
       ),
-    ),
-    h(
-      'p',
-      { class: 'muted' },
-      `Protein uses 15% of energy or ${formatNumber(REFERENCE.proteinGPerKg, 2)} g per kg of body weight (${formatNumber(roundTo(weightKg, 1), 1)} kg), whichever is higher. Fat uses 30% of energy, the middle of its range. Carbohydrate makes up the rest. Reference ranges are from the European Food Safety Authority.`,
+    )),
+    h('details', { class: 'disclosure' },
+      h('summary', {}, 'Reference ranges and assumptions'),
+      h('dl', { class: 'stats goal-stats' }, rows.flatMap(([, name, , , ref]) => [h('dt', {}, name), h('dd', {}, ref)])),
+      h('p', { class: 'muted small' },
+        `Protein uses 15% of energy or ${formatNumber(REFERENCE.proteinGPerKg, 2)} g per kg of body weight (${formatNumber(roundTo(weightKg, 1), 1)} kg), whichever is higher. Fat uses 30% of energy. Carbohydrate makes up the rest. Reference ranges are from the European Food Safety Authority.`,
+      ),
     ),
   );
 }
@@ -303,7 +304,7 @@ function nutritionCard(ex, kcal, weightKg) {
 function foodCard() {
   return h(
     'div',
-    { class: 'card' },
+    { class: 'reference-section' },
     h('h2', {}, 'Balanced food examples'),
     h('p', {}, 'Based on the Healthy Ireland food pyramid from the Department of Health and the HSE. Serving numbers are the general adult guidance.'),
     h(
