@@ -215,6 +215,7 @@ export function scanPanel({ store, meal, localDate, saveToLibrary, onSaved, onMa
       renderTotals(root.querySelector('#scan-totals'));
     });
     const remove = h('button', { type: 'button', class: 'button button--small button--danger-ghost', 'aria-label': `Remove ${row.name}` }, 'Remove');
+    const finder = matchFinder(row, i);
     remove.addEventListener('click', () => {
       row.removed = true;
       renderReview();
@@ -233,7 +234,57 @@ export function scanPanel({ store, meal, localDate, saveToLibrary, onSaved, onMa
         h('span', { class: 'unit' }, 'g'),
       ),
       h('p', { class: 'hint', id: `scan-range-${i}` }, `Estimated ${formatNumber(row.low)}–${formatNumber(row.high)} g. Weigh it if you can.`),
+      finder,
       remove,
+    );
+  }
+
+  /** Search the food database for a (better) match for one item. Open when it has no match. */
+  function matchFinder(row, i) {
+    const input = h('input', { id: `scan-find-${i}`, class: 'input', type: 'search', value: row.name, autocomplete: 'off' });
+    const button = h('button', { type: 'button', class: 'button button--small', id: `scan-find-go-${i}` }, 'Search');
+    const out = h('div', { id: `scan-find-results-${i}`, role: 'status' });
+    const run = async () => {
+      const q = input.value.trim();
+      if (q.length < 2) return;
+      out.textContent = 'Searching…';
+      try {
+        const { results } = await searchFoods(q, { type: 'all' });
+        out.replaceChildren(
+          results.length
+            ? h(
+                'ul',
+                { class: 'food-list' },
+                results.slice(0, 6).map((food) => {
+                  const b = h('button', { type: 'button', class: 'food-option' }, h('span', { class: 'food-option__name' }, food.name), food.brand ? h('span', { class: 'food-option__brand' }, food.brand) : null);
+                  b.addEventListener('click', () => {
+                    row.candidates = [food, ...row.candidates.filter((c) => c.sourceId !== food.sourceId)].slice(0, 6);
+                    row.chosen = 0;
+                    renderReview();
+                    root.querySelector(`#scan-match-${i}`)?.focus();
+                  });
+                  return h('li', {}, b);
+                }),
+              )
+            : h('p', {}, 'No foods found. Try a shorter word, such as “cashew”.'),
+        );
+      } catch (error) {
+        out.textContent = error.message;
+      }
+    };
+    button.addEventListener('click', run);
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        run();
+      }
+    });
+    return h(
+      'details',
+      { class: 'disclosure', open: row.candidates.length === 0 },
+      h('summary', {}, row.candidates.length ? 'Search for a different match' : 'Search for a match'),
+      h('div', { class: 'search-row' }, h('label', { for: `scan-find-${i}`, class: 'visually-hidden' }, `Search the food database for ${row.name}`), input, button),
+      out,
     );
   }
 
@@ -268,7 +319,7 @@ export function scanPanel({ store, meal, localDate, saveToLibrary, onSaved, onMa
         out.textContent = error.message;
       }
     });
-    return h('details', { class: 'disclosure' }, h('summary', {}, 'Add a missing item (such as oil, butter or a sauce)'), h('div', { class: 'search-row' }, h('label', { for: 'scan-add-q', class: 'visually-hidden' }, 'Food to add'), input, button), out);
+    return h('details', { class: 'disclosure', id: 'scan-add' }, h('summary', {}, 'Add a missing item (such as oil, butter or a sauce)'), h('div', { class: 'search-row' }, h('label', { for: 'scan-add-q', class: 'visually-hidden' }, 'Food to add'), input, button), out);
   }
 
   function confirmedRows() {
@@ -300,7 +351,7 @@ export function scanPanel({ store, meal, localDate, saveToLibrary, onSaved, onMa
   function saveAll(confirm, button) {
     const active = rows.filter((r) => !r.removed);
     if (active.some((r) => r.chosen < 0)) {
-      renderReview('Choose a food database match for every item, or remove items with no match.');
+      renderReview('Choose a food database match for every item: use “Search for a match” under it, or remove it.');
       return;
     }
     if (active.some((r) => !Number.isFinite(r.grams) || r.grams < 1 || r.grams > 5000)) {

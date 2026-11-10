@@ -1053,13 +1053,21 @@ await check('scan: consent first, one request on double tap, review, corrections
   await page.click('#scan-save');
   await page.waitForSelector('#scan-error');
   assert.match(await page.textContent('#scan-error'), /match for every item/);
+  // An item with no match offers a search, filled in with its name; a result becomes its match.
+  assert.equal(await page.isVisible('#scan-find-1'), true);
+  assert.equal(await page.inputValue('#scan-find-1'), 'Mystery dip');
+  await page.fill('#scan-find-1', 'apple');
+  await page.click('#scan-find-go-1');
+  await page.click('#scan-find-results-1 .food-option >> nth=0');
+  await page.waitForFunction(() => document.querySelector('#scan-match-1')?.value === '0');
+  assert.match(await page.textContent('#scan-match-1'), /Apple/);
   await page.click('.scan-item[data-index="1"] button:has-text("Remove")');
   await page.fill('#scan-grams-0', '150');
   assert.match(await page.textContent('#scan-totals [data-nutrient="energy"]'), /^78 kcal$/);
   // Add a hidden ingredient by search.
-  await page.click('#scan-panel summary');
+  await page.click('#scan-add summary');
   await page.fill('#scan-add-q', 'apple juice');
-  await page.click('#scan-panel .search-row button');
+  await page.click('#scan-add .search-row button');
   await page.click('#scan-add-results .food-option >> nth=1');
   await page.waitForSelector('#scan-grams-2');
   await page.fill('#scan-grams-2', '100');

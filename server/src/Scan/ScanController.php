@@ -151,7 +151,7 @@ final class ScanController
 
                 $items = [];
                 foreach ($result['items'] as $item) {
-                    $item['candidates'] = $this->candidates($item['searchTerm']);
+                    $item['candidates'] = $this->candidates($item['searchTerm'], $item['name']);
                     $items[] = $item;
                 }
                 $body = [
@@ -179,14 +179,57 @@ final class ScanController
         }
     }
 
-    /** Up to 3 food database matches; an empty list if the database is unavailable. */
-    private function candidates(string $term): array
+    /**
+     * Up to 3 food database matches. The AI's wording can be more specific than the database
+     * ("cashews, whole and pieces" vs "Nuts, cashew nuts, raw"), so when a search finds nothing,
+     * simpler wordings are tried: the food's name, then without preparation words, then singular.
+     * At most 4 searches per item; an empty list if the database is unavailable.
+     */
+    private function candidates(string $term, string $name = ''): array
     {
-        try {
-            return array_slice($this->fdc->search($term, 'generic', 8), 0, 3);
-        } catch (UpstreamException) {
-            return [];
+        $tries = 0;
+        foreach (self::searchVariants($term, $name) as $query) {
+            if (++$tries > 4) {
+                break;
+            }
+            try {
+                $found = $this->fdc->search($query, $tries === 4 ? 'all' : 'generic', 8);
+            } catch (UpstreamException) {
+                return [];
+            }
+            if ($found !== []) {
+                return array_slice($found, 0, 3);
+            }
         }
+
+        return [];
+    }
+
+    /** @return list<string> distinct search wordings, most specific first */
+    public static function searchVariants(string $term, string $name = ''): array
+    {
+        $simplify = static function (string $s): string {
+            $s = mb_strtolower($s);
+            $s = (string) preg_replace('/\([^)]*\)/u', ' ', $s);
+            $s = (string) preg_replace('/\b(raw|cooked|fresh|whole|pieces?|sliced|chopped|diced|boiled|fried|grilled|baked|roasted|steamed|plain|and|with|of|the|a|portion|serving|homemade|unsalted|salted)\b/u', ' ', $s);
+            $s = (string) preg_replace('/[^\p{L}\p{N} ]+/u', ' ', $s);
+
+            return trim((string) preg_replace('/\s+/u', ' ', $s));
+        };
+        $singular = static fn (string $s): string => implode(' ', array_map(
+            static fn (string $w): string => mb_strlen($w) > 4 && str_ends_with($w, 'ies') ? mb_substr($w, 0, -3) . 'y'
+                : (mb_strlen($w) > 3 && str_ends_with($w, 's') && !str_ends_with($w, 'ss') ? mb_substr($w, 0, -1) : $w),
+            explode(' ', $s),
+        ));
+        $out = [];
+        foreach ([$term, $name, $simplify($term), $simplify($name), $singular($simplify($term)), $singular($simplify($name))] as $q) {
+            $q = trim($q);
+            if (mb_strlen($q) >= 2 && !in_array(mb_strtolower($q), array_map('mb_strtolower', $out), true)) {
+                $out[] = $q;
+            }
+        }
+
+        return $out;
     }
 
     /** @return resource|null */

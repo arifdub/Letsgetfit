@@ -152,6 +152,15 @@ test('image checks reject non-images, tiny images and oversized files', function
     expectScanError(fn () => (new ImageProcessor(8_000_000))->process($bomb), 'too_large');
 });
 
+test('food database search wordings get simpler when the first finds nothing', function () {
+    $v = \LetsGetFit\Scan\ScanController::searchVariants('cashews, whole and pieces', 'Cashews (whole and pieces)');
+    eq($v[0], 'cashews, whole and pieces');
+    ok(in_array('cashews', $v, true), 'preparation words removed: ' . implode(' | ', $v));
+    ok(in_array('cashew', $v, true), 'singular tried');
+    eq(\LetsGetFit\Scan\ScanController::searchVariants('blueberries, raw'), ['blueberries, raw', 'blueberries', 'blueberry']);
+    eq(\LetsGetFit\Scan\ScanController::searchVariants('rice, white, cooked', 'rice, white, cooked'), ['rice, white, cooked', 'rice white'], 'no repeats');
+});
+
 test('scan statistics: averages, cost from prices, usefulness from feedback, no personal data', function () {
     $dir = sys_get_temp_dir() . '/lgf-stats-' . bin2hex(random_bytes(4));
     $stats = new \LetsGetFit\Scan\ScanStats($dir, fn () => strtotime('2026-11-10 12:00:00 UTC'));
