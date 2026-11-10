@@ -47,6 +47,22 @@ function badges(food) {
   return h('span', { class: 'badges' }, items.map((t) => h('span', { class: 'badge' }, t)));
 }
 
+export function diaryEnergyReference(p) {
+  if (!p || !checkEligibility(p).eligible || !getActivityLevel(p.activityLevel)) return null;
+  if (p.goal && p.goal.type !== 'maintain') return { kcal: planGoal(p, p.goal).allowedKcal, goal: true };
+  const ree = mifflinStJeor({ weightKg: p.weightKg, heightCm: p.heightCm, ageYears: p.ageYears, sex: p.sex });
+  return { kcal: roundEnergyForDisplay(maintenanceEnergy(ree, p.activityLevel)), goal: false };
+}
+
+export function diaryMacros({ totals, missing, count }) {
+  return NUTRIENTS.filter((n) => n.group === 'core' && n.key !== 'energy').map((n) =>
+    h('div', { class: `macro macro--${n.key}` },
+      h('dt', {}, n.key === 'carbohydrate' ? 'Carbs' : n.label),
+      h('dd', {}, count > 0 && missing[n.key] === count ? 'Unknown' : `${missing[n.key] ? '≥ ' : ''}${fmtNutrient(n, totals[n.key])}`),
+    ),
+  );
+}
+
 export function initFood(store) {
   const view = $('#view-food');
   const dateInput = $('#food-date');
@@ -84,14 +100,6 @@ export function initFood(store) {
 
   /* ---------------- Day view ---------------- */
 
-  function maintenanceKcal() {
-    const p = store.profile;
-    if (!p || !checkEligibility(p).eligible || !getActivityLevel(p.activityLevel)) return null;
-    if (p.goal && p.goal.type !== 'maintain') return { kcal: planGoal(p, p.goal).allowedKcal, goal: true };
-    const ree = mifflinStJeor({ weightKg: p.weightKg, heightCm: p.heightCm, ageYears: p.ageYears, sex: p.sex });
-    return { kcal: roundEnergyForDisplay(maintenanceEnergy(ree, p.activityLevel)), goal: false };
-  }
-
   function renderTotals(entries, day) {
     const container = $('#food-totals');
     if (entries.length === 0) {
@@ -114,7 +122,7 @@ export function initFood(store) {
         h('td', { class: 'muted' }, status),
       );
     });
-    const maintenance = maintenanceKcal();
+    const maintenance = diaryEnergyReference(store.profile);
     const energyMissing = missing.energy;
     const logged = Math.round(totals.energy);
     const comparison = energyMissing === 0 && maintenance?.kcal > 0;
@@ -123,12 +131,6 @@ export function initFood(store) {
       'p',
       { class: 'stat__value', id: 'day-energy' },
       energyMissing === count ? 'Energy unknown' : `${energyMissing ? 'At least ' : ''}${formatNumber(logged)} kcal`,
-    );
-    const macros = NUTRIENTS.filter((n) => n.group === 'core' && n.key !== 'energy').map((n) =>
-      h('div', { class: `macro macro--${n.key}` },
-        h('dt', {}, n.key === 'carbohydrate' ? 'Carbs' : n.label),
-        h('dd', {}, missing[n.key] === count ? 'Unknown' : `${missing[n.key] ? '≥ ' : ''}${fmtNutrient(n, totals[n.key])}`),
-      ),
     );
     container.replaceChildren(
       h(
@@ -154,7 +156,7 @@ export function initFood(store) {
             ) : null,
           ),
         ),
-        h('dl', { class: 'macro-grid', 'aria-label': 'Macronutrients and fibre' }, macros),
+        h('dl', { class: 'macro-grid', 'aria-label': 'Macronutrients and fibre' }, diaryMacros(day)),
         incompleteAny
           ? h('p', { class: 'muted small', id: 'totals-incomplete' }, 'Some nutrient values are unknown. Totals marked ≥ include only known values.')
           : null,
@@ -266,6 +268,7 @@ export function initFood(store) {
   /* ---------------- Panel ---------------- */
 
   function openPanel(next, trigger) {
+    searchController?.abort();
     state = next;
     lastTrigger = trigger ?? null;
     renderPanel();
@@ -756,5 +759,11 @@ export function initFood(store) {
     if (location.hash === '#food') render();
   });
   render();
-  return { render };
+  return {
+    openToday(meal) {
+      setDate(toLocalDateString());
+      const trigger = $(`[data-add-meal="${meal}"]`);
+      openPanel({ step: 'choose', meal, tab: searchAvailable === false ? 'mine' : 'search' }, trigger);
+    },
+  };
 }
