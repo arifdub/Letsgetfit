@@ -110,7 +110,7 @@ export function initAccount(store, { onSynced, onState } = {}) {
         busy(form, false);
       }
     });
-    const usePassword = h('button', { type: 'button', class: 'button button--ghost', id: 'use-password' }, 'Log in with a password instead');
+    const usePassword = h('button', { type: 'button', class: 'button button--ghost', id: 'use-password' }, 'Log in with a password or PIN instead');
     usePassword.addEventListener('click', () => {
       step = 'password';
       render();
@@ -187,7 +187,7 @@ export function initAccount(store, { onSynced, onState } = {}) {
       { class: 'form', id: 'login-form', novalidate: true },
       statusBox(),
       formField('acc-login-email', 'Email', { name: 'email', type: 'email', autocomplete: 'username', required: true, value: pendingEmail }),
-      formField('acc-login-password', 'Password', { name: 'password', type: 'password', autocomplete: 'current-password', required: true }),
+      formField('acc-login-password', 'Password or PIN', { name: 'password', type: 'password', autocomplete: 'current-password', required: true }),
       h('div', { class: 'form__actions' }, h('button', { type: 'submit', class: 'button button--primary' }, 'Log in')),
     );
     form.addEventListener('submit', async (e) => {
@@ -361,9 +361,9 @@ export function initAccount(store, { onSynced, onState } = {}) {
       'form',
       { class: 'form', id: 'set-password-form', novalidate: true },
       statusBox(),
-      h('p', { class: 'muted' }, u.hasPassword ? 'Change your password, or remove it and log in with email codes only.' : 'Add a password to log in without waiting for a code. You can still use codes at any time.'),
+      h('p', { class: 'muted' }, u.hasPassword ? 'Change your password, or remove it and log in with email codes only.' : 'Add a password or a 6-digit PIN to log in without waiting for a code. You can still use email codes at any time.'),
       needsCurrent ? formField('acc-current-password', 'Current password', { name: 'currentPassword', type: 'password', autocomplete: 'current-password', required: true }, 'Forgotten it? Log out, log in with an email code, and come back here within 15 minutes.') : null,
-      formField('acc-new-password', u.hasPassword ? 'New password' : 'Password', { name: 'password', type: 'password', autocomplete: 'new-password', required: true, minlength: '12' }, 'At least 12 characters. A few unrelated words work well.'),
+      formField('acc-new-password', u.hasPassword ? 'New password or PIN' : 'Password or PIN', { name: 'password', type: 'password', autocomplete: 'new-password', required: true, minlength: '6' }, 'At least 6 characters, or a 6-digit PIN. Longer is safer: a few unrelated words work well.'),
       h(
         'div',
         { class: 'form__actions' },
@@ -511,7 +511,7 @@ export function initAccount(store, { onSynced, onState } = {}) {
         h(
           'section',
           { class: 'card', id: 'account-card', 'aria-labelledby': 'account-title' },
-          h('h2', { id: 'account-title', tabindex: '-1' }, step === 'password' ? 'Log in with a password' : 'Join or log in'),
+          h('h2', { id: 'account-title', tabindex: '-1' }, step === 'password' ? 'Log in with a password or PIN' : 'Join or log in'),
           intro,
           state.signupsOpen ? null : h('p', { class: 'notice-inline' }, 'New accounts are paused at the moment. Existing members can still log in.'),
           ...body,

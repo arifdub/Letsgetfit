@@ -18,7 +18,7 @@ The database is only used by **optional accounts** and the admin panel. Accounts
 ## How people sign in
 
 - **Join or log in** on the **Account** tab: enter an email address and we email a 6-digit code. A new address is asked for explicit health-data consent before the account is created.
-- **Password (optional):** once logged in, a member can add a password and use it instead of a code. A forgotten password is replaced by logging in with a code and setting a new one within 15 minutes. Changing or removing it logs out other devices.
+- **Password or PIN (optional):** once logged in, a member can add a password (at least 6 characters) or a 6-digit PIN and use it instead of a code. Obvious PINs and common passwords are refused. Password logins are limited to 8 attempts per address every 15 minutes and 30 a day; after that, the member logs in with an email code. A forgotten password is replaced by logging in with a code and setting a new one within 15 minutes. Changing or removing it logs out other devices.
 - **Admin:** whoever logs in with a code sent to `ADMIN_EMAIL` becomes an admin. Admins can make other members admins.
 
 | User panel (`#account`) | Admin panel (`#admin`, admins only) |

@@ -60,7 +60,7 @@ Calorie estimates for sessions stay optional, labelled and separate from daily e
 
 - **Optional accounts (Account tab):**
   - join or log in with a 6-digit code sent by email; new accounts give explicit consent for health data first;
-  - add a password later to skip the code; change or remove it; log out everywhere.
+  - add a password (6+ characters) or a 6-digit PIN later to skip the code; change or remove it; log out everywhere.
 - **Admin panel (`#admin`):** the `ADMIN_EMAIL` account becomes admin. Set up the database with a one-time token, manage API keys (stored encrypted), pause scanning or sign-ups, manage members (disable, admin, delete), send a test email, and read the activity log. Admins never see members' health records.
 - **Sync, opt-in for each device:**
   - a preview shows what will be copied each way;

@@ -228,6 +228,10 @@ final class AccountController
         if ($wait = $this->limit('login:email:' . $email, 8, 900)) {
             return self::rateLimited($wait);
         }
+        // Daily cap per address: with short passwords and PINs allowed, this bounds guessing.
+        if ($wait = $this->limit('login:email-day:' . $email, 30, 86400)) {
+            return self::error(429, 'rate_limited', 'Too many password attempts today. Log in with an email code instead.', ['Retry-After' => (string) $wait]);
+        }
         $password = is_string($body['password'] ?? null) ? $body['password'] : '';
         $user = $email === '' ? null : $this->findUser($email);
         $hash = $user !== null && is_string($user['password_hash']) && $user['password_hash'] !== '' ? $user['password_hash'] : null;

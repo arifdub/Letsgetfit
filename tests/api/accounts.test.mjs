@@ -369,6 +369,15 @@ test('optional password: set after a code login, log in with it, change it, remo
   const d = new Client(s.url);
   await d.me();
   assert.equal((await d.post('login', { email: 'orla@example.ie', password: 'third long passphrase here' })).status, 401);
+  // A 6-digit PIN works as a password; obvious PINs are refused.
+  const pin = await codeLogin(s, 'pin@example.ie');
+  assert.equal((await pin.post('set-password', { password: '123456' })).body.error, 'weak_password');
+  assert.match((await pin.post('set-password', { password: '121212' })).body.message, /PIN is too easy/);
+  assert.equal((await pin.post('set-password', { password: '482915' })).status, 200);
+  const pinDevice = new Client(s.url);
+  await pinDevice.me();
+  assert.equal((await pinDevice.post('login', { email: 'pin@example.ie', password: '482915' })).status, 200);
+  assert.equal((await pinDevice.me()).body.user.email, 'pin@example.ie');
   // An account without a password, logged in a while ago, must log in again to add one.
   sql("UPDATE users SET password_hash = NULL", s.dbName);
   const old = await codeLogin(s, 'old@example.ie');

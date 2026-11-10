@@ -10,6 +10,12 @@ use LetsGetFit\Db\Migrator;
 test('password policy: length, common, repeated, contains email', function () {
     eq(Passwords::problem('correct horse battery staple'), null);
     ok(Passwords::problem('short') !== null, 'too short');
+    eq(Passwords::problem('482915'), null, 'a 6-digit PIN is allowed');
+    eq(Passwords::problem('mango7'), null, 'six characters are allowed');
+    foreach (['123456', '654321', '000000', '121212', '123123', 'abcdef', 'qwerty', 'abcabc', '112233'] as $weak) {
+        ok(Passwords::problem($weak) !== null, "$weak is refused");
+    }
+    ok(str_contains((string) Passwords::problem('123456'), 'PIN'), 'PIN wording for digits');
     ok(Passwords::problem(str_repeat('a', 129)) !== null, 'too long');
     ok(Passwords::problem('password1234') !== null, 'common');
     ok(Passwords::problem('zzzzzzzzzzzzzzz') !== null, 'repeated');
