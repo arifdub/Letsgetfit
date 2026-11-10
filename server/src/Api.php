@@ -28,6 +28,23 @@ final class Api
 {
     public static function run(string $endpoint, string $privateDir): void
     {
+        // A fatal error (for example in a package on a newer PHP version) still answers with JSON
+        // naming the file and line, so the deploy check shows what failed. No message text,
+        // request data or full paths.
+        register_shutdown_function(static function (): void {
+            $e = error_get_last();
+            if ($e === null || !in_array($e['type'], [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR], true)) {
+                return;
+            }
+            $file = str_replace('\\', '/', (string) $e['file']);
+            $short = preg_match('#/(vendor/.+|src/.+|bootstrap\.php)$#', $file, $m) ? $m[1] : basename($file);
+            error_log('LetsGetFit fatal error in ' . $short . ':' . $e['line']);
+            if (!headers_sent()) {
+                http_response_code(500);
+                header('Content-Type: application/json; charset=utf-8');
+            }
+            echo json_encode(['error' => 'server_error', 'message' => 'Something went wrong. Add the food manually.', 'fatal' => $short . ':' . $e['line'], 'php' => PHP_MAJOR_VERSION . '.' . PHP_MINOR_VERSION]);
+        });
         try {
             $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
             if ($endpoint === 'account' || $endpoint === 'admin') {
@@ -282,6 +299,11 @@ final class Api
             'scanProviders' => self::scanProviderLabels($config),
             'gd' => ImageProcessor::available(),
             'pdoMysql' => extension_loaded('pdo_mysql'),
+            // ?packages=1 loads the Composer packages, to prove they work on this PHP version.
+            'packages' => ($_GET['packages'] ?? '') === '1' ? [
+                'mailer' => class_exists(\PHPMailer\PHPMailer\PHPMailer::class),
+                'claude' => class_exists(\Anthropic\Client::class) && class_exists(\GuzzleHttp\Client::class),
+            ] : null,
         ], ['Cache-Control' => 'no-store']];
     }
 

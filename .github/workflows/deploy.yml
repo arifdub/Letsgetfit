@@ -158,6 +158,14 @@ jobs:
           if ! grep -q '"ok":true' <<<"$health"; then
             echo "::warning::$SITE_URL/api/health.php did not answer OK. Food search will be unavailable (manual entry still works). See 'Server code for food search' in docs/DEPLOY-CPANEL.md."
           fi
+          # Load the Composer packages (email, Claude) once, to prove they work on the host's PHP.
+          packages="$(curl --silent --location --max-time 20 "${SITE_URL%/}/api/health.php?packages=1" || true)"
+          if grep -q '"packages":{"mailer":true,"claude":true}' <<<"$packages"; then
+            echo "Packages check passed: email and Claude libraries load on the server."
+          else
+            echo "Packages check reply: $(head -c 400 <<<"$packages")"
+            echo "::warning::The email or Claude libraries do not load on the server (see the reply above). Food search is not affected."
+          fi
           if grep -q '"accounts":"enabled"' <<<"$health"; then
             echo "::notice::Accounts are switched ON. If this is the first time, open ${SITE_URL%/}/#admin and enter the ADMIN_SETUP_TOKEN to create the database tables."
           fi
