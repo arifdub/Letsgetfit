@@ -14,6 +14,43 @@ const svg = (tag, attrs = {}) => {
   return el;
 };
 
+// Values are labelled in the surrounding HTML. The SVGs are visual companions.
+export function summaryRing(fraction, over = false) {
+  const root = svg('svg', { viewBox: '0 0 120 120', class: 'summary-ring', 'aria-hidden': 'true' });
+  const track = { cx: 60, cy: 60, r: 49, pathLength: 100 };
+  root.append(svg('circle', { ...track, class: 'summary-ring__track' }));
+  if (fraction > 0) {
+    root.append(svg('circle', {
+      ...track,
+      class: over ? 'summary-ring__fill summary-ring__fill--over' : 'summary-ring__fill',
+      'stroke-dasharray': `${Math.min(fraction, 1) * 100} 100`,
+      transform: 'rotate(-90 60 60)',
+    }));
+  }
+  return root;
+}
+
+export function summaryBar(fraction) {
+  const root = svg('svg', { viewBox: '0 0 100 6', preserveAspectRatio: 'none', class: 'summary-bar', 'aria-hidden': 'true' });
+  root.append(svg('rect', { width: 100, height: 6, class: 'summary-bar__track' }));
+  root.append(svg('rect', { width: Math.max(0, Math.min(fraction, 1)) * 100, height: 6, class: 'summary-bar__fill' }));
+  return root;
+}
+
+export function weeklyBars(values) {
+  const root = svg('svg', { viewBox: '0 0 800 100', preserveAspectRatio: 'none', class: 'weekly-bars', 'aria-hidden': 'true' });
+  const max = Math.max(1, ...values);
+  values.forEach((value, index) => {
+    const height = value / max * 96;
+    root.append(svg('rect', { x: index * 100 + 25, y: 0, width: 50, height: 100, rx: 6, class: 'weekly-bars__track' }));
+    if (height > 0) root.append(svg('rect', {
+      x: index * 100 + 25, y: 100 - height, width: 50, height, rx: 6,
+      class: index === values.length - 1 ? 'weekly-bars__current' : 'weekly-bars__previous',
+    }));
+  });
+  return root;
+}
+
 function niceTicks(min, max, count = 4) {
   const span = Math.max(max - min, 0.5);
   const raw = span / count;
@@ -92,7 +129,10 @@ export function renderWeightChart(container, points, units) {
     });
     // Trend line.
     if (points.length > 1) {
-      root.append(svg('path', { d: points.map((p, i) => `${i ? 'L' : 'M'}${x(p.localDate).toFixed(1)},${y(toUnit(p.trendKg)).toFixed(1)}`).join(' '), class: 'chart-trend' }));
+      const line = points.map((p, i) => `${i ? 'L' : 'M'}${x(p.localDate).toFixed(1)},${y(toUnit(p.trendKg)).toFixed(1)}`).join(' ');
+      const bottom = height - pad.bottom;
+      root.append(svg('path', { d: `${line} L${x(points.at(-1).localDate)},${bottom} L${x(points[0].localDate)},${bottom} Z`, class: 'chart-area' }));
+      root.append(svg('path', { d: line, class: 'chart-trend' }));
     }
     // Readings.
     for (const p of points) root.append(svg('circle', { cx: x(p.localDate), cy: y(toUnit(p.weightKg)), r: 4, class: 'chart-dot' }));

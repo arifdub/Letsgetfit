@@ -71,6 +71,8 @@ function start() {
       showRoute('overview', { focus: false });
       const methods = $('#methods');
       if (methods) {
+        const disclosure = methods.closest('details');
+        if (disclosure) disclosure.open = true;
         methods.scrollIntoView({ block: 'start' });
         $('#methods-title').focus();
       } else {

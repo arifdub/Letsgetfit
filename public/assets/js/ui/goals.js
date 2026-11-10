@@ -155,11 +155,12 @@ export function goalCard(store, profile, units) {
       h('span', { class: 'muted' }, 'This range comes from BMI, so it does not account for muscle or build. There is no single “ideal” weight.'),
     ),
     planSummary(profile, goal, units),
-    h('details', { class: 'disclosure', open: !profile.goal }, h('summary', {}, profile.goal ? 'Change goal' : 'Set a goal'), form),
-    h(
-      'p',
-      { class: 'muted small' },
-      'Targets are estimates. Bodies adapt, so check your weight trend after 3–4 weeks and adjust. If you have a health condition, take medication that affects weight, or are under 20, talk to your GP before changing how you eat. If food or weight is causing you worry, Bodywhys (bodywhys.ie) offers free support in Ireland.',
+    h('details', { class: 'disclosure' },
+      h('summary', {}, profile.goal ? 'Change goal' : 'Set a goal'),
+      form,
+      h('p', { class: 'muted small' },
+        'Targets are estimates. Bodies adapt, so check your weight trend after 3–4 weeks and adjust. If you have a health condition, take medication that affects weight, or are under 20, talk to your GP before changing how you eat. If food or weight is causing you worry, Bodywhys (bodywhys.ie) offers free support in Ireland.',
+      ),
     ),
   );
 }
