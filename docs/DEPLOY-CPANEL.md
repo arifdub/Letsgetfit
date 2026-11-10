@@ -48,7 +48,7 @@ Full steps: **[docs/DATABASE.md](DATABASE.md)**. Privacy launch checklist: **[do
 
 ### Phase 5: AI meal scan (built, switched off)
 
-Switch it on by adding the `OPENAI_API_KEY` repository secret. Optional repository variables: `OPENAI_MODEL` (default `gpt-4o-mini`; any vision-capable model with structured outputs) and `SCAN_DAILY_LIMIT` (default 100 scans a day across the whole site). The deploy log then shows `aiScan: enabled`. If it shows `unavailable`, ask the host to enable the PHP **GD** extension. Set a monthly spending limit in the OpenAI dashboard as well.
+To use Claude instead of (or as well as) OpenAI, add the `ANTHROPIC_API_KEY` secret, and optionally the variables `ANTHROPIC_MODEL` (default `claude-opus-5-5`) and `SCAN_PROVIDER` (`openai`, `claude` or `alternate`). These can also be set later in the admin panel. Switch it on by adding the `OPENAI_API_KEY` repository secret. Optional repository variables: `OPENAI_MODEL` (default `gpt-4o-mini`; any vision-capable model with structured outputs) and `SCAN_DAILY_LIMIT` (default 100 scans a day across the whole site). The deploy log then shows `aiScan: enabled`. If it shows `unavailable`, ask the host to enable the PHP **GD** extension. Set a monthly spending limit in the OpenAI dashboard as well.
 
 
 - **AI provider credentials** in the private config file only.

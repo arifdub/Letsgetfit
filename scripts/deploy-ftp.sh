@@ -56,7 +56,7 @@ export ACCOUNTS_ENABLED
 # Which server settings this deploy can see (names only, never values), to help find a secret
 # saved under the wrong name or in the wrong place.
 seen=""; unseen=""
-for name in ACCOUNTS_ENABLED APP_HASH_SECRET ADMIN_EMAIL ADMIN_SETUP_TOKEN DB_HOST DB_NAME DB_USER DB_PASSWORD SMTP_HOST SMTP_PORT SMTP_SECURE SMTP_USER SMTP_PASSWORD MAIL_FROM FDC_API_KEY OPENAI_API_KEY; do
+for name in ACCOUNTS_ENABLED SCAN_PROVIDER ANTHROPIC_API_KEY APP_HASH_SECRET ADMIN_EMAIL ADMIN_SETUP_TOKEN DB_HOST DB_NAME DB_USER DB_PASSWORD SMTP_HOST SMTP_PORT SMTP_SECURE SMTP_USER SMTP_PASSWORD MAIL_FROM FDC_API_KEY OPENAI_API_KEY; do
   if [ -n "${!name:-}" ]; then seen="$seen $name"; else unseen="$unseen $name"; fi
 done
 echo "deploy-ftp: settings found:${seen:- none}"
@@ -109,7 +109,7 @@ if [ -n "${APP_HASH_SECRET:-}" ] && ! [[ "$APP_HASH_SECRET" =~ ^[A-Za-z0-9_-]{16
   fail "APP_HASH_SECRET must be 16+ letters, numbers, - or _."
 fi
 command -v php >/dev/null 2>&1 || fail "php is needed to build the server settings file."
-if [ -n "${OPENAI_API_KEY:-}" ] || [ "${ACCOUNTS_ENABLED:-}" = "true" ]; then
+if [ -n "${OPENAI_API_KEY:-}" ] || [ -n "${ANTHROPIC_API_KEY:-}" ] || [ "${ACCOUNTS_ENABLED:-}" = "true" ]; then
   # Fail before uploading anything if the settings would be invalid or incomplete.
   SITE_URL="${SITE_URL:-https://letsgetfit.site/}" php "$REPO_ROOT/scripts/write-config.php" >/dev/null || fail "the server settings are not valid (see the message above)."
 fi
@@ -290,12 +290,21 @@ deploy_private() {
     return 0
   fi
 
+  # Composer packages first, compared by size only: a fresh checkout gives every file a new time,
+  # and re-uploading thousands of unchanged library files would make each deploy take minutes.
+  # Package tests, examples and docs are never uploaded.
+  if [ -d "$SERVER_SOURCE/vendor" ]; then
+    run_lftp "cd \"$target\"" "cd .." "mkdir -p -f $private_root/app/vendor $private_root/config" \
+      "mirror --reverse --no-perms --ignore-time --parallel=8 --verbose=1 --exclude-glob .git/ --exclude-glob .github/ --exclude-glob '*.md' --exclude-glob '*/*/language/' --exclude-glob '*/*/docs/' --exclude-glob '*/*/tests/' --exclude-glob '*/*/examples/' --exclude-glob '*/*/fixtures/' --exclude-glob '*/*/scripts/' \"$SERVER_SOURCE/vendor\" $private_root/app/vendor" \
+      || fail "could not upload the server packages to $private_root/app/vendor."
+  fi
+  # Our own code: always compared by time and size, so every change is uploaded.
   run_lftp "cd \"$target\"" "cd .." "mkdir -p -f $private_root/app $private_root/config" \
-    "mirror --reverse --no-perms --parallel=4 --verbose=1 --exclude-glob .git/ --exclude-glob '*.md' --exclude-glob 'vendor/*/*/language/' --exclude-glob 'vendor/*/*/docs/' \"$SERVER_SOURCE\" $private_root/app" \
+    "mirror --reverse --no-perms --parallel=4 --verbose=1 --exclude-glob .git/ --exclude-glob '*.md' --exclude-glob vendor/ \"$SERVER_SOURCE\" $private_root/app" \
     || fail "could not upload the server code to $private_root/app."
   info "server code uploaded to $private_root/app (outside the web root)."
 
-  if [ -n "${FDC_API_KEY:-}" ] || [ -n "${OPENAI_API_KEY:-}" ] || [ "${ACCOUNTS_ENABLED:-}" = "true" ]; then
+  if [ -n "${FDC_API_KEY:-}" ] || [ -n "${OPENAI_API_KEY:-}" ] || [ -n "${ANTHROPIC_API_KEY:-}" ] || [ "${ACCOUNTS_ENABLED:-}" = "true" ]; then
     :
   elif run_lftp "cd \"$target\"" "cd .." "cls -1 $private_root/config/app.php" >/dev/null 2>&1; then
     info "kept the existing server settings (no FDC_API_KEY, OPENAI_API_KEY or ACCOUNTS_ENABLED=true set). To switch accounts on, add the ACCOUNTS_ENABLED variable with the value true."

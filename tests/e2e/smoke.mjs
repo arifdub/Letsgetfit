@@ -40,13 +40,17 @@ const API_FOODS = [
   },
 ];
 
-async function mockApi(page, { health = 'configured', search, aiScan = 'disabled', scanRoute } = {}) {
+async function mockApi(page, { health = 'configured', search, aiScan = 'disabled', scanRoute, scanProviders = ['OpenAI'], onFeedback } = {}) {
   await page.route('**/api/health.php', (route) =>
     health === 'down'
       ? route.fulfill({ status: 503, contentType: 'application/json', body: '{"error":"not_configured"}' })
-      : route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, php: '8.3', foodSearch: health, aiScan }) }),
+      : route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, php: '8.3', foodSearch: health, aiScan, scanProviders }) }),
   );
   if (scanRoute) await page.route('**/api/scan.php', scanRoute);
+  await page.route('**/api/scan.php?action=feedback', (route) => {
+    onFeedback?.(JSON.parse(route.request().postData() || '{}'));
+    return route.fulfill({ status: 200, contentType: 'application/json', body: '{"ok":true,"counted":true}' });
+  });
   await page.route('**/api/account.php?*', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: '{"enabled":false}' }));
   await page.route('**/api/foods.php?*', (route) => {
     const q = new URL(route.request().url()).searchParams.get('q');
@@ -981,8 +985,10 @@ await check('scan: hidden unless the server enables it', async () => {
 
 await check('scan: consent first, one request on double tap, review, corrections and confirmed save', async () => {
   const requests = [];
+  const feedbackBodies = [];
   const { page, context, errors } = await freshPage({}, {
     aiScan: 'enabled',
+    onFeedback: (body) => feedbackBodies.push(body),
     scanRoute: async (route) => {
       requests.push(route.request().headers());
       await new Promise((r) => setTimeout(r, 300));
@@ -1037,8 +1043,25 @@ await check('scan: consent first, one request on double tap, review, corrections
   const juice = stored.diary.find((e) => e.sourceId === '2345678');
   assert.equal(juice.nutrients.fibre, null, 'unknown stays unknown');
   assert.match(await page.textContent('#day-totals'), /124 kcal/);
+  // Only counts are reported, to compare AI providers: amount changed, dip removed, juice added.
+  await page.waitForFunction(() => true);
+  for (let i = 0; i < 20 && !feedbackBodies.length; i += 1) await new Promise((r) => setTimeout(r, 50));
+  assert.deepEqual(feedbackBodies, [{ requestId: requests[0]['x-request-id'], kept: 0, changed: 1, removed: 1, added: 1 }]);
   assert.deepEqual(errors, []);
   await context.close();
+});
+
+await check('scan: the consent names the AI service in use, including both when alternating', async () => {
+  for (const [providers, pattern] of [[['Claude (Anthropic)'], /then to Anthropic \(Claude\), which suggests/], [['OpenAI', 'Claude (Anthropic)'], /OpenAI or Anthropic \(Claude\) \(the site uses both/]]) {
+    const { page, context, errors } = await freshPage({}, { aiScan: 'enabled', scanProviders: providers, scanRoute: (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(SCAN_REPLY) }) });
+    await openScan(page);
+    await page.setInputFiles('#scan-file', { name: 'meal.jpg', mimeType: 'image/jpeg', buffer: MEAL_JPEG });
+    await page.waitForSelector('#scan-consent');
+    assert.match(await page.textContent('#scan-consent'), pattern);
+    assert.doesNotMatch(await page.textContent('#scan-consent'), providers.length === 1 ? /OpenAI/ : /^$/);
+    assert.deepEqual(errors, []);
+    await context.close();
+  }
 });
 
 await check('scan: failures explain and keep manual entry; not-food photo; retry reuses the request ID', async () => {

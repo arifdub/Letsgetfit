@@ -43,10 +43,12 @@ function jpeg(w = 400, h = 300) {
 
 async function setup(over = {}) {
   const base = mkdtempSync(path.join(tmpdir(), 'lgf-scan-'));
-  const counts = { ai: path.join(base, 'ai-count'), fdc: path.join(base, 'fdc-count') };
+  const counts = { ai: path.join(base, 'ai-count'), fdc: path.join(base, 'fdc-count'), claude: path.join(base, 'claude-count') };
   writeFileSync(counts.ai, '0');
   writeFileSync(counts.fdc, '0');
+  writeFileSync(counts.claude, '0');
   const ai = await phpServer([path.join(REPO, 'tests', 'php', 'mock-openai.php')], { MOCK_OPENAI_COUNT_FILE: counts.ai });
+  const claude = await phpServer([path.join(REPO, 'tests', 'php', 'mock-anthropic.php')], { MOCK_ANTHROPIC_COUNT_FILE: counts.claude });
   const fdc = await phpServer([path.join(REPO, 'tests', 'php', 'mock-fdc.php')], { MOCK_FDC_COUNT_FILE: counts.fdc });
   const priv = path.join(base, 'letsgetfit-private');
   mkdirSync(path.join(priv, 'config'), { recursive: true });
@@ -55,6 +57,7 @@ async function setup(over = {}) {
     path.join(priv, 'config', 'app.php'),
     `<?php return ${phpArray({
       openai_api_key: 'sk-test', openai_base_url: `${ai.url}/v1`, openai_model: 'mock-ok', scan_timeout_seconds: 2,
+      anthropic_base_url: claude.url, anthropic_timeout_seconds: 10,
       fdc_api_key: 'test-key', fdc_base_url: `${fdc.url}/v1`, hash_secret: 'scan-secret',
       scan_per_visitor_per_10min: 50, scan_per_visitor_per_day: 50, scan_daily_limit: 100,
       ...over,
@@ -62,15 +65,19 @@ async function setup(over = {}) {
   );
   const app = await phpServer(['-t', path.join(REPO, 'public')], { LETSGETFIT_PRIVATE_DIR: priv });
   const aiCalls = () => Number(readFileSync(counts.ai, 'utf8'));
+  const claudeCalls = () => Number(readFileSync(counts.claude, 'utf8'));
   // The server start-up probe counts as one call on each mock.
   const aiStart = aiCalls();
+  const claudeStart = claudeCalls();
   return {
     app,
     priv,
     aiCalls: () => aiCalls() - aiStart,
+    claudeCalls: () => claudeCalls() - claudeStart,
     stop() {
       app.stop();
       ai.stop();
+      claude.stop();
       fdc.stop();
       rmSync(base, { recursive: true, force: true });
     },
@@ -186,4 +193,65 @@ test('scan is off without a key, and a wrong key is reported as not configured',
   const r = await scan(wrong.app.url);
   assert.equal(r.body.error, 'not_configured');
   assert.ok(!JSON.stringify(r.body).includes('sk-'), 'no key in responses');
+});
+
+const CLAUDE = { anthropic_api_key: 'sk-ant-test-key-0123456789abcdef', anthropic_model: 'mock-ok' };
+const stats = (s) => {
+  const dir = path.join(s.priv, 'storage', 'scan-stats');
+  const files = existsSync(dir) ? readdirSync(dir) : [];
+  return files.length ? JSON.parse(readFileSync(path.join(dir, files[0]), 'utf8')) : {};
+};
+const feedback = (url, body) => fetch(`${url}/api/scan.php?action=feedback`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(async (r) => ({ status: r.status, body: await r.json() }));
+
+test('Claude provider: same result shape, database nutrients, usage recorded for cost comparison', { skip }, async (t) => {
+  const s = await setup({ ...CLAUDE, scan_provider: 'claude' });
+  t.after(() => s.stop());
+  assert.equal((await (await fetch(`${s.app.url}/api/health.php`)).json()).aiScan, 'enabled');
+  const requestId = randomUUID();
+  const r = await scan(s.app.url, { requestId });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal(r.body.provider, 'Claude (Anthropic)');
+  assert.deepEqual(r.body.items.map((i) => [i.name, i.gramsEstimate]), [['Porridge', 250], ['Blueberries', 50], ['Honey', 10]]);
+  assert.ok(r.body.items[0].candidates.length >= 1, 'database candidates');
+  assert.ok(!('energy' in r.body.items[0]));
+  assert.deepEqual([s.claudeCalls(), s.aiCalls()], [1, 0]);
+  const row = stats(s)['claude|mock-ok'];
+  assert.deepEqual([row.scans, row.ok, row.inputTokens, row.outputTokens, row.items], [1, 1, 1650, 420, 3]);
+  // Feedback: counted once, only for a scan this visitor made, numbers only.
+  assert.equal((await feedback(s.app.url, { requestId, kept: 2, changed: 1, removed: 0, added: 1 })).body.counted, true);
+  assert.equal((await feedback(s.app.url, { requestId, kept: 2, changed: 1, removed: 0, added: 1 })).body.counted, false, 'once only');
+  assert.equal((await feedback(s.app.url, { requestId: randomUUID(), kept: 9 })).body.counted, false, 'unknown scan');
+  assert.equal((await feedback(s.app.url, { requestId: 'x' })).status, 400);
+  const after = stats(s)['claude|mock-ok'];
+  assert.deepEqual([after.feedback, after.kept, after.changed, after.removed, after.added], [1, 2, 1, 0, 1]);
+  assert.ok(!JSON.stringify(stats(s)).match(/Porridge|127\.0\.0\.1/), 'no food names or IPs in stats');
+});
+
+test('Claude failures map to the same safe errors', { skip }, async (t) => {
+  for (const [model, status, code] of [['mock-refuse', 422, 'refused'], ['mock-maxtokens', 502, 'incomplete'], ['mock-500', 502, 'provider_unavailable'], ['mock-slow', 504, 'timeout']]) {
+    const s = await setup({ ...CLAUDE, scan_provider: 'claude', anthropic_model: model });
+    const r = await scan(s.app.url);
+    s.stop();
+    assert.deepEqual([r.status, r.body.error], [status, code], model);
+  }
+  const wrong = await setup({ ...CLAUDE, scan_provider: 'claude', anthropic_api_key: 'sk-ant-wrong-key-0123456789' });
+  t.after(() => wrong.stop());
+  const r = await scan(wrong.app.url);
+  assert.deepEqual([r.status, r.body.error], [503, 'not_configured']);
+  assert.equal(stats(wrong)['claude|mock-ok'].errors, 1, 'errors are counted');
+});
+
+test('provider choice: falls back to the configured one; alternate uses both', { skip }, async (t) => {
+  const onlyClaude = await setup({ ...CLAUDE, openai_api_key: '', scan_provider: 'openai' });
+  t.after(() => onlyClaude.stop());
+  assert.equal((await scan(onlyClaude.app.url)).body.provider, 'Claude (Anthropic)', 'OpenAI chosen but not set up: Claude is used');
+  const both = await setup({ ...CLAUDE, scan_provider: 'alternate' });
+  t.after(() => both.stop());
+  const seen = new Set();
+  for (let i = 0; i < 16 && seen.size < 2; i += 1) seen.add((await scan(both.app.url)).body.provider);
+  assert.deepEqual([...seen].sort(), ['Claude (Anthropic)', 'OpenAI']);
+  // Pausing scanning turns off both.
+  const paused = await setup({ ...CLAUDE, scan_provider: 'claude', scan_enabled: false });
+  t.after(() => paused.stop());
+  assert.equal((await scan(paused.app.url)).body.error, 'not_configured');
 });

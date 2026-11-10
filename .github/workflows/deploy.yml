@@ -97,6 +97,10 @@ jobs:
           # AI meal scan (Phase 5): on only when OPENAI_API_KEY is set.
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           OPENAI_MODEL: ${{ vars.OPENAI_MODEL }}
+          # Claude (Anthropic) for photo scanning, instead of or as well as OpenAI.
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ANTHROPIC_MODEL: ${{ vars.ANTHROPIC_MODEL }}
+          SCAN_PROVIDER: ${{ vars.SCAN_PROVIDER || secrets.SCAN_PROVIDER }}
           SCAN_DAILY_LIMIT: ${{ vars.SCAN_DAILY_LIMIT }}
           # Optional accounts (Phase 4): OFF unless the ACCOUNTS_ENABLED variable is 'true' and
           # every database and email secret below is set. See docs/DATABASE.md and docs/PRIVACY.md.

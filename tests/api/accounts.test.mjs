@@ -603,6 +603,22 @@ test('admin settings: API keys are encrypted, masked, and applied straight away'
   // Clearing a value falls back to the private settings file.
   await admin.admin('settings', { values: { openai_api_key: '', scan_enabled: true } });
   assert.equal((await admin.admin('settings')).body.fields.openai_api_key.source, 'none');
+  // Claude as the scan provider: the key is stored encrypted, health names the provider.
+  const claudeKey = 'sk-ant-api03-test-abcdefghijklmnop5678';
+  assert.equal((await admin.admin('settings', { values: { anthropic_api_key: claudeKey, scan_provider: 'claude', anthropic_effort: 'low', claude_price_input: '1.5' } })).status, 200);
+  assert.equal((await admin.admin('settings', { values: { scan_provider: 'gemini' } })).status, 422);
+  const sv = await admin.admin('settings');
+  assert.deepEqual(sv.body.fields.scan_provider.options, ['openai', 'claude', 'alternate']);
+  assert.deepEqual([sv.body.fields.scan_provider.value, sv.body.fields.anthropic_effort.value, sv.body.fields.claude_price_input.value], ['claude', 'low', 1.5]);
+  assert.ok(!sql('SELECT value FROM settings', s.dbName).stdout.includes(claudeKey));
+  const h2 = await fetch(`${s.url}/api/health.php`).then((r) => r.json());
+  assert.deepEqual([h2.aiScan, h2.scanProviders], ['enabled', ['Claude (Anthropic)']]);
+  const stats = await admin.admin('scan-stats');
+  assert.equal(stats.status, 200);
+  assert.equal(stats.body.months.length, 3);
+  assert.deepEqual([stats.body.current, stats.body.configured.claude], ['claude', true]);
+  assert.equal((await new Client(s.url).admin('scan-stats')).status, 403, 'admins only');
+  await admin.admin('settings', { values: { anthropic_api_key: '', scan_provider: 'openai' } });
   const changes = JSON.parse(sql("SELECT detail FROM audit_log WHERE action = 'settings.changed'", s.dbName).stdout).map((r) => r.detail);
   assert.ok(changes.includes('openai_api_key'));
   assert.ok(!sql('SELECT * FROM audit_log', s.dbName).stdout.includes('sk-test'), 'values are never audited');

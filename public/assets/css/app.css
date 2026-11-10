@@ -373,6 +373,8 @@ input[type="radio"], input[type="checkbox"] {
 .table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
 .table th, .table td { text-align: left; padding: 0.55rem 0.5rem; border-bottom: 1px solid var(--border); vertical-align: top; }
 .table thead th { font-size: 0.85rem; color: var(--text-muted); }
+.table caption { text-align: left; font-weight: 700; padding: 0.25rem 0 0.5rem; }
+.table tbody th { font-weight: 600; }
 
 .pyramid { list-style: none; margin: 0.75rem 0 1rem; padding: 0; display: grid; gap: 0.5rem; }
 .pyramid__shelf { border-left: 6px solid var(--primary); background: var(--surface-2); padding: 0.7rem 0.9rem; border-radius: var(--radius-small); }

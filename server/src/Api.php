@@ -15,7 +15,10 @@ use LetsGetFit\Mail\Mailer;
 use LetsGetFit\Mail\OutboxMailer;
 use LetsGetFit\Mail\SmtpMailer;
 use LetsGetFit\Scan\ImageProcessor;
+use LetsGetFit\Scan\ClaudeVision;
 use LetsGetFit\Scan\OpenAiVision;
+use LetsGetFit\Scan\ScanStats;
+use LetsGetFit\Scan\VisionProvider;
 use LetsGetFit\Scan\ScanController;
 use LetsGetFit\Settings\SettingsStore;
 use PDO;
@@ -38,9 +41,12 @@ final class Api
             if ($endpoint === 'scan') {
                 $config = self::effective(Config::load($privateDir));
                 if (!$config->bool('scan_enabled')) {
-                    $config = $config->withOverrides(['openai_api_key' => '']);
+                    $config = $config->withOverrides(['openai_api_key' => '', 'anthropic_api_key' => '']);
                 }
-                [$status, $body, $headers] = self::scan($config)->handle($_SERVER, $_FILES);
+                $controller = self::scan($config);
+                [$status, $body, $headers] = ($_GET['action'] ?? '') === 'feedback'
+                    ? $controller->feedback($_SERVER, (string) file_get_contents('php://input'))
+                    : $controller->handle($_SERVER, $_FILES);
                 self::send($status, $body, $headers);
 
                 return;
@@ -159,6 +165,7 @@ final class Api
             $config,
             self::settingsStore($pdo, $config),
             self::migrator($pdo),
+            self::scanStats($config),
         );
         [$status, $body, $headers] = $controller->handle($_SERVER, $_GET, (string) file_get_contents('php://input'));
 
@@ -181,21 +188,63 @@ final class Api
         return new Migrator($pdo, dirname(__DIR__) . '/migrations');
     }
 
-    public static function scan(Config $config): ScanController
+    public static function scan(Config $config, ?VisionProvider $vision = null): ScanController
     {
         $storage = $config->string('storage_dir');
-        $secret = $config->string('hash_secret') !== '' ? $config->string('hash_secret') : hash('sha256', $config->string('openai_api_key') . __DIR__);
+        $secret = $config->string('hash_secret') !== '' ? $config->string('hash_secret') : hash('sha256', $config->string('openai_api_key') . $config->string('anthropic_api_key') . __DIR__);
         $http = new CurlHttpClient();
 
         return new ScanController(
-            new OpenAiVision($http, $config),
+            $vision ?? self::visionProvider($config),
             new FoodDataCentral($http, $config),
             new ImageProcessor(max(100_000, $config->int('scan_max_upload_bytes'))),
             new RateLimiter($storage . '/ratelimit', $secret),
             new FileCache($storage . '/scan-results', 600),
             $config,
             $storage . '/locks',
+            self::scanStats($config),
+            new FileCache($storage . '/scan-feedback', 86400),
         );
+    }
+
+    /** @return list<string> */
+    public static function scanProviderLabels(Config $config): array
+    {
+        if (!$config->bool('scan_enabled')) {
+            return [];
+        }
+        $openai = new OpenAiVision(new CurlHttpClient(), $config);
+        $claude = new ClaudeVision($config);
+        if ($config->string('scan_provider') === 'alternate' && $openai->configured() && $claude->configured()) {
+            return [$openai->label(), $claude->label()];
+        }
+        $chosen = self::visionProvider($config);
+
+        return $chosen->configured() ? [$chosen->label()] : [];
+    }
+
+    public static function scanStats(Config $config): ScanStats
+    {
+        return new ScanStats($config->string('storage_dir') . '/scan-stats');
+    }
+
+    /**
+     * The provider for this scan: the one chosen in the settings, or for "alternate" either
+     * configured one at random, so both are tried on the same kind of real photos.
+     */
+    public static function visionProvider(Config $config): VisionProvider
+    {
+        $openai = new OpenAiVision(new CurlHttpClient(), $config);
+        $claude = new ClaudeVision($config);
+        $choice = $config->string('scan_provider');
+        if ($choice === 'alternate' && $openai->configured() && $claude->configured()) {
+            return random_int(0, 1) === 0 ? $openai : $claude;
+        }
+        if ($choice === 'claude' || ($choice === 'alternate' && $claude->configured())) {
+            return $claude->configured() || !$openai->configured() ? $claude : $openai;
+        }
+
+        return $openai->configured() || !$claude->configured() ? $openai : $claude;
     }
 
     public static function mailer(Config $config): Mailer
@@ -228,7 +277,9 @@ final class Api
                 'transport' => $config->string('mail_transport') === 'smtp' ? 'smtp' : 'outbox',
                 'last' => SmtpMailer::lastStatus($config->string('storage_dir')),
             ] : null,
-            'aiScan' => trim($config->string('openai_api_key')) === '' || !$config->bool('scan_enabled') ? 'disabled' : (ImageProcessor::available() && $curl ? 'enabled' : 'unavailable'),
+            'aiScan' => !self::visionProvider($config)->configured() || !$config->bool('scan_enabled') ? 'disabled' : (ImageProcessor::available() && $curl ? 'enabled' : 'unavailable'),
+            // Which AI services a photo may go to, so the app can say so before the user agrees.
+            'scanProviders' => self::scanProviderLabels($config),
             'gd' => ImageProcessor::available(),
             'pdoMysql' => extension_loaded('pdo_mysql'),
         ], ['Cache-Control' => 'no-store']];

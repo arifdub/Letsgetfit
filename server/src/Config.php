@@ -66,6 +66,20 @@ final class Config
             'scan_per_visitor_per_day' => 20,
             'scan_daily_limit' => 100,             // whole site, rolling 24 hours: caps spending
             'scan_enabled' => true,                // admins can pause scanning without removing the key
+
+            // ---- Photo scan with Claude (Anthropic) as well as, or instead of, OpenAI ----
+            'scan_provider' => 'openai',           // 'openai', 'claude', or 'alternate' (share scans to compare)
+            'anthropic_api_key' => '',
+            'anthropic_base_url' => 'https://api.anthropic.com',
+            'anthropic_model' => 'claude-opus-5-5',
+            'anthropic_effort' => 'medium',        // low | medium | high: more effort = more thinking tokens
+            'anthropic_max_tokens' => 16000,       // a ceiling only: billing is for tokens actually used
+            'anthropic_timeout_seconds' => 60,
+            // List prices in US$ per million tokens, used only to estimate costs in the admin panel.
+            'openai_price_input' => 0.15,
+            'openai_price_output' => 0.60,
+            'claude_price_input' => 0.0,           // 0 = use the built-in price for the chosen Claude model
+            'claude_price_output' => 0.0,
         ];
         $file = $privateDir . '/config/app.php';
         $loaded = [];
@@ -101,6 +115,13 @@ final class Config
     public function bool(string $key): bool
     {
         return ($this->values[$key] ?? false) === true;
+    }
+
+    public function float(string $key): float
+    {
+        $v = $this->values[$key] ?? 0;
+
+        return is_numeric($v) ? (float) $v : 0.0;
     }
 
     public function int(string $key): int

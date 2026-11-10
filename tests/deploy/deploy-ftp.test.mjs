@@ -375,4 +375,12 @@ test('meal scan settings: OpenAI key validated and written; off without a key', 
   assert.match(run({ OPENAI_API_KEY: 'sk-proj-abcdefghijklmnopqrstuvwxyz012345', SCAN_DAILY_LIMIT: '0' }).stderr, /SCAN_DAILY_LIMIT/);
   assert.match(run({ OPENAI_API_KEY: 'sk-proj-abcdefghijklmnopqrstuvwxyz012345', OPENAI_MODEL: 'bad model!' }).stderr, /OPENAI_MODEL/);
   assert.doesNotMatch(run({}).stdout, /openai_api_key/);
+  // Claude: key format checked, default model, provider choice.
+  const claude = run({ ANTHROPIC_API_KEY: 'sk-ant-api03-abcdefghijklmnopqrstuvwxyz', SCAN_PROVIDER: 'alternate' });
+  assert.equal(claude.status, 0, claude.stderr);
+  assert.match(claude.stdout, /'anthropic_model' => 'claude-opus-5-5'/);
+  assert.match(claude.stdout, /'scan_provider' => 'alternate'/);
+  assert.match(run({ ANTHROPIC_API_KEY: 'sk-proj-not-anthropic-abcdefghijk' }).stderr, /does not look like an Anthropic API key/);
+  assert.match(run({ ANTHROPIC_API_KEY: 'sk-ant-api03-abcdefghijklmnopqrstuvwxyz', SCAN_PROVIDER: 'gemini' }).stderr, /SCAN_PROVIDER/);
+  assert.match(run({ ANTHROPIC_API_KEY: 'sk-ant-api03-abcdefghijklmnopqrstuvwxyz' }).stdout, /'scan_provider' => 'claude'/, 'Claude only: Claude is the default');
 });

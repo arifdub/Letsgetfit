@@ -110,5 +110,6 @@
 ### Open items for Phase 5
 
 - Add `OPENAI_API_KEY` (secret) and optionally `OPENAI_MODEL` and `SCAN_DAILY_LIMIT` (variables). Then check `aiScan: enabled` in the deploy log and test with a real photo.
-- Complete the privacy items in `docs/PRIVACY.md` §4: OpenAI DPA, DPIA update and transfer basis.
+- Complete the privacy items in `docs/PRIVACY.md` §4: OpenAI and Anthropic DPAs, DPIA update and transfer basis.
+- Compare providers: set "Photo scan AI" to "Alternate between both" in the admin panel for a few weeks, then choose using the comparison table (cost per scan, success rate, speed, suggestions kept).
 - Manually check the goal guidance values in `docs/FORMULAS.md`.

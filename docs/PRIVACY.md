@@ -68,12 +68,12 @@ All must be done and signed off by the controller. The person running letsgetfit
 - [ ] Have a qualified person carry out an **EU privacy review** of the above.
 - [ ] Then set `ACCOUNTS_ENABLED=true`, run migrations, deploy, and check `/api/health.php`.
 
-## 4. AI meal scan (Phase 5: built, OFF until an OpenAI key is set)
+## 4. AI meal scan (Phase 5: built, OFF until an OpenAI or Anthropic key is set)
 
 | Data | Where it goes | Purpose | Retention |
 |---|---|---|---|
-| Meal photo | Browser → our server → OpenAI API (US) | Suggest foods and amounts | Our server holds it **in memory only**. PHP's temporary upload file is deleted straight away, and nothing is written to disk or logged. OpenAI states that API data is not used for training and may be kept up to 30 days for abuse monitoring. **Confirm current terms before launch.** |
-| Photo metadata (location, camera, date) | Removed twice: re-encoded in the browser, then re-encoded with GD on the server, before anything reaches OpenAI | — | Never sent |
+| Meal photo | Browser → our server → **one** of: OpenAI API (US) or Anthropic Claude API (US), as set by the admin; with "alternate", each scan goes to one of them at random | Suggest foods and amounts | Our server holds it **in memory only**. PHP's temporary upload file is deleted straight away, and nothing is written to disk or logged. OpenAI states that API data is not used for training and may be kept up to 30 days for abuse monitoring. **Confirm current terms before launch.** |
+| Photo metadata (location, camera, date) | Removed twice: re-encoded in the browser, then re-encoded with GD on the server, before anything reaches the AI service | — | Never sent |
 | Scan result (suggested foods and amounts) | Our server's private cache, keyed by a hash of IP and request ID | Lets a repeated submission return the first result without a second charge | 10 minutes |
 | IP address | Keyed hash in rate-limit files | Per-visitor quotas (5 per 10 minutes, 20 a day) and a site-wide daily cap | Under 24 hours |
 
@@ -83,10 +83,13 @@ All must be done and signed off by the controller. The person running letsgetfit
 - Users are told not to send photos of people.
 - The model is told to ignore text in the image.
 - Its output is sanitised and is never used for nutrient values.
-- The OpenAI key lives only in the private settings file.
+- API keys live only in the private settings file, or encrypted in the database when set in the admin panel.
+- The consent text names the AI service in use (both when alternating), from `/api/health.php` → `scanProviders`.
+- Comparison statistics (`storage/scan-stats/YYYY-MM.json`) hold only counts per provider and model: scans, errors, time, tokens, foods found, and kept/changed/removed/added counts from saves. No photos, food names, IP addresses or identifiers.
 
 **Before switching it on**, add these to the launch checklist:
+- [ ] If Claude is used: accept Anthropic's commercial terms and data processing addendum, record the US transfer mechanism and Anthropic's current retention period, and update the DPIA.
 - [ ] Sign OpenAI's data processing addendum (DPA). Record the US transfer mechanism (EU–US Data Privacy Framework or standard contractual clauses) and check the retention options, including zero data retention if available.
 - [ ] Update the DPIA: photos may show people, places or health information; the data goes to a US processor; AI output can be wrong.
 - [ ] Publish the scan section in `public/privacy.html` (already written) and confirm it matches OpenAI's current terms.
-- [ ] Set `SCAN_DAILY_LIMIT` and a monthly spending limit in the OpenAI dashboard.
+- [ ] Set `SCAN_DAILY_LIMIT`, and monthly spending limits in the OpenAI and Anthropic consoles.

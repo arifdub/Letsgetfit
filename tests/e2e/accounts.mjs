@@ -265,6 +265,9 @@ await check('admin: ADMIN_EMAIL logs in by code, saves an API key, disables a me
   assert.equal(await page.isChecked('#admin-set-signups_open'), false);
   const health = await (await fetch(`${BASE}api/health.php`)).json();
   assert.equal(health.aiScan, 'enabled');
+  // Photo scan provider choice and the comparison table (empty until scans happen).
+  assert.deepEqual(await page.locator('#admin-set-scan_provider option').allTextContents(), ['OpenAI (ChatGPT)', 'Claude (Anthropic)', 'Alternate between both']);
+  await page.waitForFunction(() => document.querySelector('#admin-compare')?.textContent.includes('No scans yet'));
   // Members list and disabling an account logs that member out.
   await page.waitForSelector('[data-user-email="ciara@example.ie"]');
   await page.click('[data-user-email="ciara@example.ie"] [data-user-op="disable"]');

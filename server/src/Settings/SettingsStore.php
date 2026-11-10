@@ -15,9 +15,17 @@ final class SettingsStore
 {
     /** name => [type, secret] */
     public const FIELDS = [
+        'scan_provider' => ['enum:openai:claude:alternate', false],
         'openai_api_key' => ['secret', true],
+        'anthropic_api_key' => ['secret', true],
         'fdc_api_key' => ['secret', true],
         'openai_model' => ['model', false],
+        'anthropic_model' => ['model', false],
+        'anthropic_effort' => ['enum:low:medium:high', false],
+        'openai_price_input' => ['price', false],
+        'openai_price_output' => ['price', false],
+        'claude_price_input' => ['price', false],
+        'claude_price_output' => ['price', false],
         'scan_enabled' => ['bool', false],
         'scan_daily_limit' => ['int:1:10000', false],
         'scan_per_visitor_per_day' => ['int:1:500', false],
@@ -83,6 +91,9 @@ final class SettingsStore
             return $error;
         }
         $stored = is_bool($value) ? ($value ? '1' : '0') : trim((string) $value);
+        if ($type === 'price') {
+            $stored = (string) round((float) $value, 4);
+        }
         if ($secret) {
             if (!$this->canStoreSecrets()) {
                 return 'Set the APP_HASH_SECRET secret before storing API keys here.';
@@ -105,6 +116,15 @@ final class SettingsStore
 
             return (is_int($value) || (is_string($value) && ctype_digit($value))) && (int) $value >= (int) $min && (int) $value <= (int) $max ? null : "Enter a whole number from $min to $max.";
         }
+        if (str_starts_with($type, 'enum:')) {
+            $allowed = array_slice(explode(':', $type), 1);
+
+            return is_string($value) && in_array($value, $allowed, true) ? null : 'Choose one of: ' . implode(', ', $allowed) . '.';
+        }
+        if ($type === 'price') {
+            return (is_int($value) || is_float($value) || (is_string($value) && is_numeric($value))) && (float) $value >= 0 && (float) $value <= 1000
+                ? null : 'Enter a price in US$ per million tokens, from 0 to 1000.';
+        }
         if (!is_string($value)) {
             return 'Expected text.';
         }
@@ -126,6 +146,9 @@ final class SettingsStore
         }
         if (str_starts_with($type, 'int:')) {
             return (int) $value;
+        }
+        if ($type === 'price') {
+            return (float) $value;
         }
 
         return $value;

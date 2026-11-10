@@ -10,7 +10,8 @@ declare(strict_types=1);
 // Accounts:     ACCOUNTS_ENABLED=true, APP_HASH_SECRET, DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD,
 //               SMTP_HOST, SMTP_PORT, SMTP_SECURE, SMTP_USER (defaults to MAIL_FROM), SMTP_PASSWORD,
 //               MAIL_FROM, MAIL_FROM_NAME, ADMIN_EMAIL, ADMIN_SETUP_TOKEN
-// Meal scan:    OPENAI_API_KEY, OPENAI_MODEL, SCAN_DAILY_LIMIT
+// Meal scan:    OPENAI_API_KEY, OPENAI_MODEL, ANTHROPIC_API_KEY, ANTHROPIC_MODEL,
+//               SCAN_PROVIDER (openai | claude | alternate), SCAN_DAILY_LIMIT
 // Site:         SITE_URL
 
 function env(string $name, string $default = ''): string
@@ -63,7 +64,8 @@ $config = [
     'accounts_enabled' => false,
 ];
 
-$openAiKey = env('OPENAI_API_KEY');
+$openAiKey = trim(env('OPENAI_API_KEY'));
+$anthropicKey = trim(env('ANTHROPIC_API_KEY'));
 if ($openAiKey !== '') {
     if (!preg_match('/^sk-[A-Za-z0-9_-]{20,300}$/', $openAiKey)) {
         fail('OPENAI_API_KEY does not look like an OpenAI API key (sk-...).');
@@ -72,11 +74,28 @@ if ($openAiKey !== '') {
     if (!preg_match('/^[A-Za-z0-9._:-]{1,64}$/', $model)) {
         fail('OPENAI_MODEL has an unexpected format.');
     }
+    $config += ['openai_api_key' => $openAiKey, 'openai_model' => $model];
+}
+if ($anthropicKey !== '') {
+    if (!preg_match('/^sk-ant-[A-Za-z0-9_-]{20,300}$/', $anthropicKey)) {
+        fail('ANTHROPIC_API_KEY does not look like an Anthropic API key (sk-ant-...).');
+    }
+    $model = env('ANTHROPIC_MODEL', 'claude-opus-5-5');
+    if (!preg_match('/^[A-Za-z0-9._:-]{1,64}$/', $model)) {
+        fail('ANTHROPIC_MODEL has an unexpected format.');
+    }
+    $config += ['anthropic_api_key' => $anthropicKey, 'anthropic_model' => $model];
+}
+if ($openAiKey !== '' || $anthropicKey !== '') {
     $daily = env('SCAN_DAILY_LIMIT', '100');
     if (!ctype_digit($daily) || (int) $daily < 1 || (int) $daily > 10000) {
         fail('SCAN_DAILY_LIMIT must be a whole number from 1 to 10000.');
     }
-    $config += ['openai_api_key' => $openAiKey, 'openai_model' => $model, 'scan_daily_limit' => (int) $daily];
+    $provider = strtolower(trim(env('SCAN_PROVIDER', $openAiKey !== '' ? 'openai' : 'claude')));
+    if (!in_array($provider, ['openai', 'claude', 'alternate'], true)) {
+        fail('SCAN_PROVIDER must be openai, claude or alternate.');
+    }
+    $config += ['scan_daily_limit' => (int) $daily, 'scan_provider' => $provider];
 }
 
 if (in_array(strtolower(trim(env('ACCOUNTS_ENABLED'))), ['true', 'yes', 'on', '1'], true)) {

@@ -37,6 +37,7 @@ final class AdminController
         private Config $config,
         private SettingsStore $settings,
         private Migrator $migrator,
+        private ?\LetsGetFit\Scan\ScanStats $scanStats = null,
     ) {
     }
 
@@ -69,6 +70,7 @@ final class AdminController
                 'settings' => $this->settingsView(),
                 'users' => $this->users($query),
                 'audit' => [200, ['entries' => Audit::recent($this->pdo, 100)], self::noStore()],
+                'scan-stats' => $this->scanStatsView(),
                 default => AccountController::error(404, 'unknown_action', 'Unknown action.'),
             };
         }
@@ -147,7 +149,8 @@ final class AdminController
             'features' => [
                 'signupsOpen' => $this->config->bool('signups_open'),
                 'foodSearch' => $this->config->usingDemoKey() ? 'demo-key' : 'configured',
-                'aiScan' => trim($this->config->string('openai_api_key')) === '' ? 'no-key' : ($this->config->bool('scan_enabled') ? 'enabled' : 'paused'),
+                'aiScan' => !\LetsGetFit\Api::visionProvider($this->config)->configured() ? 'no-key' : ($this->config->bool('scan_enabled') ? 'enabled' : 'paused'),
+                'scanProvider' => $this->config->string('scan_provider'),
                 'mail' => $this->config->string('mail_transport') === 'smtp' ? 'smtp' : 'outbox (test mode: emails are not sent)',
                 'secretsStorable' => $this->settings->canStoreSecrets(),
             ],
@@ -176,6 +179,9 @@ final class AdminController
                 $fields[$name]['min'] = (int) $min;
                 $fields[$name]['max'] = (int) $max;
             }
+            if (str_starts_with($type, 'enum:')) {
+                $fields[$name]['options'] = array_slice(explode(':', $type), 1);
+            }
         }
 
         return [200, ['fields' => $fields, 'secretsStorable' => $this->settings->canStoreSecrets()], self::noStore()];
@@ -188,6 +194,9 @@ final class AdminController
         }
         if (str_starts_with($type, 'int:')) {
             return $this->config->int($name);
+        }
+        if ($type === 'price') {
+            return $this->config->float($name);
         }
 
         return $this->config->string($name);
@@ -218,6 +227,29 @@ final class AdminController
         }
 
         return [200, ['ok' => true, 'message' => 'Settings saved. They apply straight away.'], self::noStore()];
+    }
+
+    /* ---------------- Photo scan comparison ---------------- */
+
+    private function scanStatsView(): array
+    {
+        if ($this->scanStats === null) {
+            return [200, ['months' => []], self::noStore()];
+        }
+        $months = [];
+        foreach ([0, -1, -2] as $offset) {
+            $month = $this->scanStats->month($offset);
+            $months[] = ['month' => $month, 'providers' => $this->scanStats->report($month, $this->config)];
+        }
+
+        return [200, [
+            'months' => $months,
+            'current' => $this->config->string('scan_provider'),
+            'configured' => [
+                'openai' => trim($this->config->string('openai_api_key')) !== '',
+                'claude' => trim($this->config->string('anthropic_api_key')) !== '',
+            ],
+        ], self::noStore()];
     }
 
     /* ---------------- Users ---------------- */

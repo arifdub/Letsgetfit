@@ -151,3 +151,40 @@ test('image checks reject non-images, tiny images and oversized files', function
     $bomb = substr_replace($fake, pack('n', 20000) . pack('n', 20000), $pos + 5, 4);
     expectScanError(fn () => (new ImageProcessor(8_000_000))->process($bomb), 'too_large');
 });
+
+test('scan statistics: averages, cost from prices, usefulness from feedback, no personal data', function () {
+    $dir = sys_get_temp_dir() . '/lgf-stats-' . bin2hex(random_bytes(4));
+    $stats = new \LetsGetFit\Scan\ScanStats($dir, fn () => strtotime('2026-11-10 12:00:00 UTC'));
+    $stats->scan('claude', 'claude-opus-5-5', 4000, null, 1600, 400, 3);
+    $stats->scan('claude', 'claude-opus-5-5', 6000, null, 1400, 600, 1);
+    $stats->scan('claude', 'claude-opus-5-5', 900, 'timeout');
+    $stats->scan('openai', 'gpt-4o-mini', 2000, null, 3000, 300, 2);
+    $stats->feedback('claude', 'claude-opus-5-5', 3, 1, 0, 1);
+    $stats->scan('bad provider!', 'x', 1, null); // ignored
+    $config = \LetsGetFit\Config::fromArray(['openai_price_input' => 0.15, 'openai_price_output' => 0.60, 'claude_price_input' => 0, 'claude_price_output' => 0]);
+    $report = $stats->report('2026-11', $config);
+    eq(count($report), 2);
+    [$claude, $openai] = $report;
+    eq([$claude['provider'], $claude['scans'], $claude['successRate'], $claude['avgSeconds'], $claude['avgInputTokens'], $claude['avgOutputTokens'], $claude['avgItems']], ['claude', 3, 0.667, 5.0, 1500, 500, 2.0]);
+    // Opus 5.5 list price: (3000 × $4 + 1000 × $20) / 1M = $0.032 total, $0.016 per successful scan.
+    eq([$claude['costTotal'], $claude['costPerScan']], [0.032, 0.016]);
+    eq([$claude['saved'], $claude['keptRate'], $claude['changedRate'], $claude['removedRate'], $claude['addedPerSave']], [1, 0.75, 0.25, 0.0, 1.0]);
+    eq($openai['costPerScan'], round((3000 * 0.15 + 300 * 0.60) / 1_000_000, 5));
+    // An admin override replaces the built-in Claude price.
+    $over = $stats->report('2026-11', $config->withOverrides(['claude_price_input' => 1.0, 'claude_price_output' => 5.0]));
+    eq($over[0]['costTotal'], round((3000 * 1 + 1000 * 5) / 1_000_000, 4));
+    eq($stats->month(-1), '2026-10');
+    ok(!str_contains((string) file_get_contents($dir . '/2026-11.json'), 'bad provider'), 'invalid keys are not stored');
+    eq($stats->report('2026-09', $config), []);
+});
+
+test('admin settings accept the scan provider, Claude key, effort and prices', function () {
+    $v = [\LetsGetFit\Settings\SettingsStore::class, 'validate'];
+    eq($v('enum:openai:claude:alternate', 'claude'), null);
+    ok($v('enum:openai:claude:alternate', 'gemini') !== null, 'unknown provider');
+    eq($v('secret', 'sk-ant-api03-AbC_dEf-123456'), null);
+    eq($v('price', '0.15'), null);
+    eq($v('price', 20), null);
+    ok($v('price', '-1') !== null && $v('price', 'cheap') !== null, 'bad prices');
+    eq(\LetsGetFit\Scan\ClaudeVision::prices(\LetsGetFit\Config::fromArray(['claude_price_input' => 0, 'claude_price_output' => 0]), 'claude-haiku-5-5'), [0.10, 0.50]);
+});

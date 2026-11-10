@@ -45,6 +45,11 @@ export function checkScanAvailable() {
   return getServerHealth().then((h) => h?.aiScan === 'enabled');
 }
 
+/** The AI services a scanned photo may be sent to, e.g. ["OpenAI"] or ["OpenAI", "Claude (Anthropic)"]. */
+export function getScanProviders() {
+  return getServerHealth().then((h) => (Array.isArray(h?.scanProviders) ? h.scanProviders.filter((p) => typeof p === 'string').map((p) => p.slice(0, 40)).slice(0, 2) : []));
+}
+
 /** For tests and after network changes. */
 export function resetSearchAvailability() {
   healthPromise = null;

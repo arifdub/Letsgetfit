@@ -7,6 +7,14 @@ import { $, h, toast, formatNumber, confirmAction } from './dom.js';
 import { formField, showError, setStatus, statusBox, busy } from './account.js';
 
 const SETTING_INFO = {
+  scan_provider: { label: 'Photo scan AI', hint: 'OpenAI, Claude, or alternate: each scan goes to one of the two at random, to compare them below.', options: { openai: 'OpenAI (ChatGPT)', claude: 'Claude (Anthropic)', alternate: 'Alternate between both' } },
+  anthropic_api_key: { label: 'Anthropic API key (Claude)', hint: 'From console.anthropic.com. Starts with sk-ant-. Leave empty to keep the current key.' },
+  anthropic_model: { label: 'Claude model', hint: 'claude-opus-5-5 (default, most capable), claude-sonnet-5-5 (cheaper), or claude-haiku-5-5 (cheapest).' },
+  anthropic_effort: { label: 'Claude effort', hint: 'How much Claude thinks before answering. Lower is cheaper and faster.', options: { low: 'Low', medium: 'Medium (default)', high: 'High' } },
+  openai_price_input: { label: 'OpenAI price: input (US$ per million tokens)', hint: 'Used only to estimate costs below. Check the current price for your model on the OpenAI pricing page.' },
+  openai_price_output: { label: 'OpenAI price: output (US$ per million tokens)', hint: '' },
+  claude_price_input: { label: 'Claude price: input (US$ per million tokens)', hint: '0 uses the built-in list price for the chosen Claude model.' },
+  claude_price_output: { label: 'Claude price: output (US$ per million tokens)', hint: '0 uses the built-in list price.' },
   openai_api_key: { label: 'OpenAI API key', hint: 'Turns on Food → Scan photo. Starts with sk-. Leave empty to keep the current key.' },
   fdc_api_key: { label: 'USDA FoodData Central API key', hint: 'Free from api.data.gov. Without one, food search uses the shared DEMO_KEY with low limits.' },
   openai_model: { label: 'OpenAI model', hint: 'A vision model with structured outputs, such as gpt-4o-mini.' },
@@ -60,8 +68,9 @@ export function initAdmin(account) {
         return;
       }
       const [ov, st] = await Promise.all([admin.overview(), admin.settings()]);
-      panel.replaceChildren(overviewCard(ov), settingsCard(st), usersCard(user.email), toolsCard(), auditCard());
+      panel.replaceChildren(overviewCard(ov), settingsCard(st), compareCard(), usersCard(user.email), toolsCard(), auditCard());
       loadUsers('');
+      loadCompare();
     } catch (error) {
       panel.replaceChildren(message('Something went wrong', error.message));
     } finally {
@@ -126,7 +135,8 @@ export function initAdmin(account) {
         { class: 'stats', id: 'admin-features' },
         row('New accounts', f.signupsOpen ? 'Open' : 'Paused'),
         row('Food search', f.foodSearch === 'configured' ? 'Own API key' : 'Shared DEMO_KEY (low limits)'),
-        row('Photo scan', { enabled: 'On', paused: 'Paused', 'no-key': 'Off (no OpenAI key)' }[f.aiScan] ?? f.aiScan),
+        row('Photo scan', { enabled: 'On', paused: 'Paused', 'no-key': 'Off (no API key)' }[f.aiScan] ?? f.aiScan),
+        row('Scan AI', SETTING_INFO.scan_provider.options[f.scanProvider] ?? f.scanProvider ?? 'OpenAI'),
         row('Email', f.mail),
       ),
     );
@@ -151,11 +161,26 @@ export function initAdmin(account) {
         );
         continue;
       }
+      if (field.type === 'enum') {
+        inputs.push(
+          h(
+            'div',
+            { class: 'field', dataset: { field: name } },
+            h('label', { for: id }, info.label),
+            h('p', { class: 'hint', id: `${id}-hint` }, info.hint),
+            h('select', { id, name, class: 'input', 'aria-describedby': `${id}-hint ${id}-error` }, field.options.map((o) => h('option', { value: o, selected: field.value === o }, info.options?.[o] ?? o))),
+            h('p', { class: 'field-error', id: `${id}-error`, hidden: true }),
+          ),
+        );
+        continue;
+      }
       let hint = info.hint;
       if (field.secret) hint = `${SOURCE_TEXT[field.source]}${field.stored?.hint ? ` (ends ${field.stored.hint})` : ''}. ${info.hint}`;
       const attrs =
         field.type === 'int'
           ? { name, type: 'number', inputmode: 'numeric', min: field.min, max: field.max, value: field.value }
+          : field.type === 'price'
+            ? { name, type: 'number', inputmode: 'decimal', min: 0, max: 1000, step: 'any', value: field.value }
           : field.secret
             ? { name, type: 'password', autocomplete: 'off', spellcheck: 'false', placeholder: field.stored ? 'Saved: type a new key to replace it' : '' }
             : { name, type: name.includes('email') ? 'email' : 'text', value: field.value ?? '', spellcheck: 'false' };
@@ -206,8 +231,10 @@ export function initAdmin(account) {
           if (el.checked !== field.value) values[name] = el.checked;
         } else if (field.secret) {
           if (el.value.trim() !== '') values[name] = el.value.trim();
-        } else if (field.type === 'int') {
+        } else if (field.type === 'int' || field.type === 'price') {
           if (Number(el.value) !== field.value) values[name] = el.value === '' ? '' : Number(el.value);
+        } else if (field.type === 'enum') {
+          if (el.value !== field.value) values[name] = el.value;
         } else if (el.value.trim() !== (field.value ?? '')) values[name] = el.value.trim();
       }
       if (!Object.keys(values).length) {
@@ -224,6 +251,67 @@ export function initAdmin(account) {
       h('p', { class: 'muted' }, 'Values saved here apply straight away and take priority over the GitHub secrets. Keys are stored encrypted and never shown again in full.'),
       form,
     );
+  }
+
+  /* ---------------- Photo scan comparison ---------------- */
+
+  function compareCard() {
+    return h(
+      'section',
+      { class: 'card', 'aria-labelledby': 'admin-compare-title' },
+      h('h2', { id: 'admin-compare-title' }, 'Photo scan: compare OpenAI and Claude'),
+      h('p', { class: 'muted' }, 'Real scans on this site, by month. Cost is estimated from the tokens used and the prices in the settings above. "Kept as suggested" counts foods people saved without changing the match, or the amount by more than 10%: a sign of how useful the suggestions were. To compare fairly, set "Photo scan AI" to "Alternate between both" for a while.'),
+      h('div', { id: 'admin-compare' }),
+    );
+  }
+
+  async function loadCompare() {
+    const box = $('#admin-compare');
+    if (!box) return;
+    box.replaceChildren(h('div', { class: 'state state--loading', role: 'status' }, 'Loading scan statistics…'));
+    try {
+      const data = await admin.scanStats();
+      const months = (data.months ?? []).filter((m) => m.providers.length);
+      if (!months.length) {
+        box.replaceChildren(h('div', { class: 'state state--empty' }, h('p', { class: 'state__title' }, 'No scans yet'), h('p', {}, 'Figures appear here after people scan meal photos.')));
+        return;
+      }
+      const pct = (v) => (v == null ? '–' : `${Math.round(v * 100)}%`);
+      const num = (v, d = 0) => (v == null ? '–' : formatNumber(v, d));
+      const usd = (v) => (v == null ? '–' : v < 0.01 ? `$${v.toFixed(4)}` : `$${v.toFixed(2)}`);
+      const label = (p) => `${p.provider === 'claude' ? 'Claude' : 'OpenAI'} · ${p.model}`;
+      const rows = [
+        ['Scans', (p) => num(p.scans)],
+        ['Worked', (p) => pct(p.successRate)],
+        ['Average time', (p) => (p.avgSeconds == null ? '–' : `${formatNumber(p.avgSeconds, 1)} s`)],
+        ['Foods found per photo', (p) => num(p.avgItems, 1)],
+        ['Tokens in / out per scan', (p) => `${num(p.avgInputTokens)} / ${num(p.avgOutputTokens)}`],
+        ['Cost per scan', (p) => usd(p.costPerScan)],
+        ['Total cost', (p) => usd(p.costTotal)],
+        ['Scans saved by people', (p) => num(p.saved)],
+        ['Kept as suggested', (p) => pct(p.keptRate)],
+        ['Changed', (p) => pct(p.changedRate)],
+        ['Removed', (p) => pct(p.removedRate)],
+        ['Foods added per save', (p) => num(p.addedPerSave, 1)],
+      ];
+      box.replaceChildren(
+        ...months.map((m) =>
+          h(
+            'div',
+            { class: 'table-wrap' },
+            h(
+              'table',
+              { class: 'table', id: `admin-compare-${m.month}`, dataset: { month: m.month } },
+              h('caption', {}, new Date(`${m.month}-01T00:00:00Z`).toLocaleDateString('en-IE', { month: 'long', year: 'numeric', timeZone: 'UTC' })),
+              h('thead', {}, h('tr', {}, h('th', { scope: 'col' }, 'Measure'), m.providers.map((p) => h('th', { scope: 'col' }, label(p))))),
+              h('tbody', {}, rows.map(([name, fn]) => h('tr', {}, h('th', { scope: 'row' }, name), m.providers.map((p) => h('td', {}, fn(p)))))),
+            ),
+          ),
+        ),
+      );
+    } catch (error) {
+      box.replaceChildren(h('p', { class: 'notice-inline notice-inline--error' }, error.message));
+    }
   }
 
   /* ---------------- Members ---------------- */

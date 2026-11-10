@@ -1,5 +1,6 @@
 // Client for /api/scan.php. The photo goes to our server, which removes metadata and asks
-// OpenAI for food suggestions; nutrients are always taken from the food database.
+// OpenAI or Claude (as set by the admin) for food suggestions; nutrients are always taken from
+// the food database.
 
 import { foodFromApi } from '../lib/food.js';
 
@@ -65,7 +66,23 @@ export async function scanMeal(photo, { requestId, signal } = {}) {
     items,
     questions: (Array.isArray(body.questions) ? body.questions : []).filter((q) => typeof q === 'string').slice(0, 3).map((q) => q.slice(0, 160)),
     disclaimer: typeof body.disclaimer === 'string' ? body.disclaimer : '',
+    provider: typeof body.provider === 'string' ? body.provider.slice(0, 40) : '',
   };
+}
+
+/** Tell the server how the suggestions were changed (counts only). Never blocks or fails saving. */
+export function sendScanFeedback(requestId, counts) {
+  try {
+    fetch('api/scan.php?action=feedback', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ requestId, ...counts }),
+      keepalive: true,
+    }).catch(() => {});
+  } catch {
+    /* ignore */
+  }
 }
 
 function clampGrams(v) {

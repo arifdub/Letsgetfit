@@ -1,8 +1,9 @@
 // "Scan photo" in the add-food panel: choose or take a photo, consent, analyse, review and
 // correct every item and amount, then confirm before anything is saved.
 
-import { scanMeal } from '../api/scan.js';
-import { searchFoods } from '../api/foods.js';
+import { scanMeal, sendScanFeedback } from '../api/scan.js';
+import { searchFoods, getScanProviders } from '../api/foods.js';
+import { feedbackCounts } from '../lib/scan-feedback.js';
 import { NUTRIENTS, scaleNutrients, sumNutrients } from '../lib/nutrients.js';
 import { buildDiaryEntry, MEALS } from '../lib/food.js';
 import { createId } from '../storage/store.js';
@@ -33,7 +34,20 @@ export async function preparePhoto(file) {
 
 const mealLabel = (id) => MEALS.find((m) => m.id === id)?.label.toLowerCase() ?? id;
 
+const providerName = (label) => (label === 'Claude (Anthropic)' ? 'Anthropic (Claude)' : label || 'the AI service');
+
+/** "OpenAI", "Anthropic (Claude)", or both when the site alternates between them. */
+export function providerText(list) {
+  if (!list.length) return 'an AI service';
+  if (list.length === 1) return providerName(list[0]);
+  return `${list.map(providerName).join(' or ')} (the site uses both, to compare them)`;
+}
+
 export function scanPanel({ store, meal, localDate, saveToLibrary, onSaved, onManual }) {
+  let providers = [];
+  getScanProviders().then((list) => {
+    providers = list;
+  });
   const root = h('div', { class: 'scan', id: 'scan-panel' });
   let photo = null; // prepared JPEG blob
   let previewUrl = null;
@@ -102,8 +116,8 @@ export function scanPanel({ store, meal, localDate, saveToLibrary, onSaved, onMa
         h(
           'ul',
           { class: 'bullets small' },
-          h('li', {}, 'It goes to our server, which removes location and camera details, and then to OpenAI, which suggests the foods and amounts.'),
-          h('li', {}, 'We do not keep the photo. OpenAI says it does not use API data to train its models, and may keep it for up to 30 days to check for abuse.'),
+          h('li', { id: 'scan-provider-text' }, `It goes to our server, which removes location and camera details, and then to ${providerText(providers)}, which suggests the foods and amounts.`),
+          h('li', {}, `We do not keep the photo. ${providers.length > 1 ? 'Both companies say they do' : `${providerName(providers[0])} says it does`} not use API data to train ${providers.length > 1 ? 'their models' : 'its models'}, and may keep it for a limited time to check for abuse.`),
           h('li', {}, 'Suggestions can be wrong. A photo cannot show allergens, exact amounts or hidden ingredients.'),
         ),
         h('p', { class: 'small' }, 'Do not send photos of people or anything private. ', h('a', { href: 'privacy.html' }, 'Privacy notice'), '.'),
@@ -134,7 +148,7 @@ export function scanPanel({ store, meal, localDate, saveToLibrary, onSaved, onMa
       return;
     }
     controller = null;
-    rows = result.items.map((item) => ({ name: item.name, grams: item.gramsEstimate, low: item.gramsLow, high: item.gramsHigh, confidence: item.confidence, candidates: item.candidates, chosen: item.candidates.length ? 0 : -1, removed: false }));
+    rows = result.items.map((item) => ({ name: item.name, grams: item.gramsEstimate, suggestedGrams: item.gramsEstimate, suggested: true, low: item.gramsLow, high: item.gramsHigh, confidence: item.confidence, candidates: item.candidates, chosen: item.candidates.length ? 0 : -1, removed: false }));
     renderReview();
   }
 
@@ -241,7 +255,7 @@ export function scanPanel({ store, meal, localDate, saveToLibrary, onSaved, onMa
                 results.slice(0, 5).map((food) => {
                   const b = h('button', { type: 'button', class: 'food-option' }, h('span', { class: 'food-option__name' }, food.name), food.brand ? h('span', { class: 'food-option__brand' }, food.brand) : null);
                   b.addEventListener('click', () => {
-                    rows.push({ name: food.name, grams: food.servingOptions[0]?.grams ?? 10, low: 1, high: 2000, confidence: 'added by you', candidates: [food], chosen: 0, removed: false });
+                    rows.push({ name: food.name, grams: food.servingOptions[0]?.grams ?? 10, suggested: false, low: 1, high: 2000, confidence: 'added by you', candidates: [food], chosen: 0, removed: false });
                     renderReview();
                     root.querySelector(`#scan-grams-${rows.length - 1}`)?.focus();
                   });
@@ -312,6 +326,7 @@ export function scanPanel({ store, meal, localDate, saveToLibrary, onSaved, onMa
       toast(error.message, 'error');
       return;
     }
+    if (requestId) sendScanFeedback(requestId, feedbackCounts(rows));
     cleanup();
     toast(`${active.length} ${active.length === 1 ? 'item' : 'items'} added to ${mealLabel(meal)}.`);
     onSaved?.();

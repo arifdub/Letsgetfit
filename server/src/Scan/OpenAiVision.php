@@ -13,7 +13,7 @@ use LetsGetFit\Http\HttpException;
  * The model only suggests foods, portion ranges and follow-up questions. It is never asked for
  * nutrients: those come from the food database for the foods and grams the user confirms.
  */
-final class OpenAiVision
+final class OpenAiVision implements VisionProvider
 {
     public const MAX_ITEMS = 10;
     public const MAX_QUESTIONS = 3;
@@ -31,6 +31,26 @@ TXT;
 
     public function __construct(private HttpClient $http, private Config $config)
     {
+    }
+
+    public function key(): string
+    {
+        return 'openai';
+    }
+
+    public function label(): string
+    {
+        return 'OpenAI';
+    }
+
+    public function model(): string
+    {
+        return $this->config->string('openai_model');
+    }
+
+    public function configured(): bool
+    {
+        return trim($this->config->string('openai_api_key')) !== '';
     }
 
     /** @return array<string, mixed> */
@@ -69,7 +89,7 @@ TXT;
     }
 
     /**
-     * @return array{isFood: bool, imageQuality: string, items: list<array<string, mixed>>, questions: list<string>}
+     * @return array{isFood: bool, imageQuality: string, items: list<array<string, mixed>>, questions: list<string>, usage: array{input: int, output: int}}
      * @throws ScanException
      */
     public function analyse(string $jpeg): array
@@ -139,7 +159,12 @@ TXT;
             throw new ScanException('provider_unavailable', 'Photo analysis gave an unexpected reply. Add the food manually.', 502);
         }
 
-        return self::sanitise($parsed);
+        $usage = is_array($data['usage'] ?? null) ? $data['usage'] : [];
+
+        return self::sanitise($parsed) + ['usage' => [
+            'input' => (int) ($usage['prompt_tokens'] ?? 0),
+            'output' => (int) ($usage['completion_tokens'] ?? 0),
+        ]];
     }
 
     /**

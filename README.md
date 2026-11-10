@@ -12,7 +12,7 @@ All figures are presented as estimates. The app does not give medical advice or 
 | 2 | Food diary and nutrient data (PHP food search) | ✅ Complete, live |
 | 3 | Exercise library, routines, progress trends | ✅ Complete, live |
 | 4 | Optional accounts, sync, user and admin panels | ✅ Built and tested · switched off until the database and email secrets are added |
-| 5 | Goals and AI meal scan | ✅ Goals live · scan built, switched off until an OpenAI key is added |
+| 5 | Goals and AI meal scan (OpenAI or Claude) | ✅ Goals live · scan built, switched off until an OpenAI or Anthropic key is added |
 
 Details and acceptance checks: [docs/STATUS.md](docs/STATUS.md).
 
@@ -78,9 +78,10 @@ Calorie estimates for sessions stay optional, labelled and separate from daily e
   - a healthy weight range for your height (BMI 18.5–24.9), shown as a range rather than one "ideal" weight;
   - maintenance energy, and the allowed daily energy for losing, maintaining or gaining weight, with the difference, a macro split and an estimated date.
   - **Safeguards:** no target below or above the healthy range; at most 1% of body weight and 1 kg a week; never below 1,200 or 1,500 kcal; adults only, not during pregnancy; and a link to Bodywhys (Irish eating-disorder support).
-- **AI meal scan** (Food → Scan photo, once an OpenAI key is set):
+- **AI meal scan** (Food → Scan photo, once an OpenAI or Anthropic key is set):
   - take or choose a photo, read where it goes, then confirm;
-  - OpenAI suggests foods and portion ranges, and each is matched to USDA FoodData Central;
+  - OpenAI or Claude (chosen in the admin panel, or alternating to compare them) suggests foods and portion ranges, and each is matched to USDA FoodData Central;
+  - the admin panel compares the two on real scans: cost per scan, speed, success rate, and how many suggestions people kept;
   - you correct matches and grams and add hidden items such as oil;
   - nutrients are calculated from the database, and nothing is saved until you confirm.
   - **Privacy and cost:** photos are stripped of metadata and not stored, with consent checked on the server, per-visitor and daily limits, and repeat-submission protection.
@@ -153,6 +154,7 @@ Each service, and how to run without production credentials:
 |---|---|---|
 | USDA FoodData Central API | 2 (live) | Food search. Optional `FDC_API_KEY` secret; without it the public DEMO_KEY is used. Tests use a mock server and fixtures. |
 | OpenAI API (vision) | 5 (off) | Meal photo suggestions. Secret `OPENAI_API_KEY`; tests use `tests/php/mock-openai.php`. |
+| Anthropic Claude API (vision) | 5 (off) | Meal photo suggestions, instead of or alongside OpenAI. Secret `ANTHROPIC_API_KEY`, variables `ANTHROPIC_MODEL`, `SCAN_PROVIDER`; official PHP SDK (`anthropic-ai/sdk`); tests use `tests/php/mock-anthropic.php`. |
 | Open Food Facts | Evaluated, not adopted | Irish and EU branded products and barcodes (see docs/FOOD-DATA.md) |
 | MySQL / MariaDB | 4 (off) | Accounts and sync. Tests use a throwaway database (`LGF_TEST_DB_*` variables); CI uses a MariaDB service. |
 | SMTP / email provider | 4 (off) | Login code emails. Development and tests use a private outbox (`mail_transport: outbox`). |
