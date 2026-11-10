@@ -66,6 +66,22 @@ final class ClaudeVision implements VisionProvider
 
     public function analyse(string $jpeg): array
     {
+        return $this->request(OpenAiVision::SYSTEM_PROMPT, [
+            ['type' => 'image', 'source' => ['type' => 'base64', 'mediaType' => 'image/jpeg', 'data' => base64_encode($jpeg)]],
+            ['type' => 'text', 'text' => 'Identify the foods in this meal photo.'],
+        ]);
+    }
+
+    public function analyseText(string $text): array
+    {
+        return $this->request(OpenAiVision::TEXT_PROMPT, [
+            ['type' => 'text', 'text' => "What I ate:\n" . $text],
+        ]);
+    }
+
+    /** @param list<array<string, mixed>> $content */
+    private function request(string $system, array $content): array
+    {
         if (!$this->configured()) {
             throw new ScanException('not_configured', 'Photo scanning is not set up on this server yet. Add the food manually.', 503);
         }
@@ -75,14 +91,8 @@ final class ClaudeVision implements VisionProvider
             $message = $this->client()->beta->messages->create(
                 model: $this->model(),
                 maxTokens: max(1024, $this->config->int('anthropic_max_tokens')),
-                system: OpenAiVision::SYSTEM_PROMPT,
-                messages: [[
-                    'role' => 'user',
-                    'content' => [
-                        ['type' => 'image', 'source' => ['type' => 'base64', 'mediaType' => 'image/jpeg', 'data' => base64_encode($jpeg)]],
-                        ['type' => 'text', 'text' => 'Identify the foods in this meal photo.'],
-                    ],
-                ]],
+                system: $system,
+                messages: [['role' => 'user', 'content' => $content]],
                 thinking: ['type' => 'adaptive'],
                 outputConfig: [
                     'effort' => $effort,

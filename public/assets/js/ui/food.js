@@ -302,7 +302,7 @@ export function initFood(store) {
   function tabs() {
     const items = [
       ['search', 'Search'],
-      ...(scanAvailable ? [['scan', 'Scan photo']] : []),
+      ...(scanAvailable ? [['scan', 'Scan photo'], ['describe', 'Describe']] : []),
       ['mine', 'My foods'],
       ['new', 'New food'],
     ];
@@ -349,9 +349,10 @@ export function initFood(store) {
 
   function renderChoose() {
     const body = [];
-    if (state.tab === 'scan' && scanAvailable) {
+    if ((state.tab === 'scan' || state.tab === 'describe') && scanAvailable) {
       body.push(
         scanPanel({
+          mode: state.tab === 'describe' ? 'text' : 'photo',
           store,
           meal: state.meal,
           localDate: currentDate,

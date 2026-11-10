@@ -25,4 +25,12 @@ interface VisionProvider
      * @throws ScanException
      */
     public function analyse(string $jpeg): array;
+
+    /**
+     * The same, from the person's own description ("2 slices of toast with butter"): foods and
+     * grams only, never nutrients.
+     * @return array{isFood: bool, imageQuality: string, items: list<array<string, mixed>>, questions: list<string>, usage: array{input: int, output: int}}
+     * @throws ScanException
+     */
+    public function analyseText(string $text): array;
 }

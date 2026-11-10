@@ -25,10 +25,11 @@ if ($given !== $key) {
 }
 $req = json_decode((string) file_get_contents('php://input'), true);
 $image = $req['messages'][0]['content'][0] ?? [];
-$ok = ($image['type'] ?? '') === 'image'
+$isText = ($image['type'] ?? '') === 'text' && str_starts_with((string) ($image['text'] ?? ''), 'What I ate:');
+$ok = ($isText || (($image['type'] ?? '') === 'image'
     && ($image['source']['type'] ?? '') === 'base64'
     && ($image['source']['media_type'] ?? '') === 'image/jpeg'
-    && base64_decode((string) ($image['source']['data'] ?? ''), true) !== false
+    && base64_decode((string) ($image['source']['data'] ?? ''), true) !== false))
     && ($req['output_config']['format']['type'] ?? '') === 'json_schema'
     && ($req['output_config']['format']['schema']['additionalProperties'] ?? null) === false
     && ($req['thinking']['type'] ?? '') === 'adaptive'

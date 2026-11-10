@@ -86,6 +86,7 @@ All must be done and signed off by the controller. The person running letsgetfit
 | Data | Where it goes | Purpose | Retention |
 |---|---|---|---|
 | Meal photo | Browser → our server → **one** of: OpenAI API (US) or Anthropic Claude API (US), as set by the admin; with "alternate", each scan goes to one of them at random | Suggest foods and amounts | Our server holds it **in memory only**. PHP's temporary upload file is deleted straight away, and nothing is written to disk or logged. OpenAI states that API data is not used for training and may be kept up to 30 days for abuse monitoring. **Confirm current terms before launch.** |
+| Food description text (Food → Describe) | Browser → our server → the same AI service | Turn a description into foods and grams | Not stored or logged; the suggested foods are cached for 10 minutes like scan results |
 | Photo metadata (location, camera, date) | Removed twice: re-encoded in the browser, then re-encoded with GD on the server, before anything reaches the AI service | — | Never sent |
 | Scan result (suggested foods and amounts) | Our server's private cache, keyed by a hash of IP and request ID | Lets a repeated submission return the first result without a second charge | 10 minutes |
 | IP address | Keyed hash in rate-limit files | Per-visitor quotas (5 per 10 minutes, 20 a day) and a site-wide daily cap | Under 24 hours |

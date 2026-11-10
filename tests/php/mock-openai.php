@@ -21,7 +21,9 @@ if (($_SERVER['HTTP_AUTHORIZATION'] ?? '') !== 'Bearer sk-test') {
 }
 $req = json_decode((string) file_get_contents('php://input'), true);
 $url = $req['messages'][1]['content'][1]['image_url']['url'] ?? '';
-if (!str_starts_with($url, 'data:image/jpeg;base64,') || ($req['response_format']['json_schema']['strict'] ?? false) !== true) {
+$described = (string) ($req['messages'][1]['content'][0]['text'] ?? '');
+$isText = str_starts_with($described, 'What I ate:') && count($req['messages'][1]['content']) === 1;
+if ((!$isText && !str_starts_with($url, 'data:image/jpeg;base64,')) || ($req['response_format']['json_schema']['strict'] ?? false) !== true) {
     http_response_code(400);
     echo '{"error":{"message":"bad request"}}';
     return;
@@ -29,6 +31,16 @@ if (!str_starts_with($url, 'data:image/jpeg;base64,') || ($req['response_format'
 $reply = static function (array $content, ?string $refusal = null): void {
     echo json_encode(['choices' => [['finish_reason' => 'stop', 'message' => ['role' => 'assistant', 'content' => json_encode($content), 'refusal' => $refusal]]]]);
 };
+if ($isText && ($req['model'] ?? '') === 'mock-ok') {
+    // Echo a parse of the description; the word "spaceship" means "not food".
+    $reply(str_contains($described, 'spaceship')
+        ? ['is_food' => false, 'image_quality' => 'good', 'items' => [], 'questions' => []]
+        : ['is_food' => true, 'image_quality' => 'good', 'items' => [
+            ['name' => 'Apple', 'search_term' => 'apple', 'preparation' => 'raw', 'grams_estimate' => 180, 'grams_low' => 150, 'grams_high' => 210, 'confidence' => 'high'],
+            ['name' => 'Peanut butter', 'search_term' => 'peanut butter', 'preparation' => 'unspecified', 'grams_estimate' => 32, 'grams_low' => 16, 'grams_high' => 32, 'confidence' => 'medium'],
+        ], 'questions' => ['Was the peanut butter smooth or crunchy?']]);
+    return;
+}
 switch ($req['model'] ?? '') {
     case 'mock-slow':
         sleep(7); // longer than the 5-second minimum timeout

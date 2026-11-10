@@ -1,7 +1,7 @@
 // "Scan photo" in the add-food panel: choose or take a photo, consent, analyse, review and
 // correct every item and amount, then confirm before anything is saved.
 
-import { scanMeal, sendScanFeedback } from '../api/scan.js';
+import { scanMeal, describeMeal, sendScanFeedback } from '../api/scan.js';
 import { searchFoods, getScanProviders } from '../api/foods.js';
 import { feedbackCounts } from '../lib/scan-feedback.js';
 import { NUTRIENTS, scaleNutrients, sumNutrients } from '../lib/nutrients.js';
@@ -43,13 +43,19 @@ export function providerText(list) {
   return `${list.map(providerName).join(' or ')} (the site uses both, to compare them)`;
 }
 
-export function scanPanel({ store, meal, localDate, saveToLibrary, onSaved, onManual }) {
+export function scanPanel({ store, meal, localDate, saveToLibrary, onSaved, onManual, mode = 'photo' }) {
+  const isText = mode === 'text';
   let providers = [];
   getScanProviders().then((list) => {
     providers = list;
+    // The describe screen can be showing already: name the service there too.
+    const name = root.querySelector('#describe-provider');
+    if (name) name.textContent = providerText(providers);
   });
   const root = h('div', { class: 'scan', id: 'scan-panel' });
   let photo = null; // prepared JPEG blob
+  let description = '';
+  let sentDescription = null;
   let previewUrl = null;
   let requestId = null;
   let controller = null;
@@ -66,8 +72,48 @@ export function scanPanel({ store, meal, localDate, saveToLibrary, onSaved, onMa
     previewUrl = null;
   }
 
+  /* ---------- Text mode: describe, with the consent notice on the same screen ---------- */
+  function renderDescribe(message) {
+    const area = h('textarea', { id: 'describe-text', class: 'input', rows: '4', maxlength: '1000', 'aria-describedby': 'describe-hint' });
+    area.value = description;
+    area.addEventListener('input', () => {
+      description = area.value;
+    });
+    const go = h('button', { type: 'button', class: 'button button--primary', id: 'describe-go' }, 'Find the foods');
+    go.addEventListener('click', () => {
+      description = area.value.trim();
+      if (description.length < 3) {
+        renderDescribe('Describe what you ate, for example “2 slices of toast with butter and a banana”.');
+        return;
+      }
+      // A new request ID only when the text changes: a retry or double tap is never charged twice.
+      if (description !== sentDescription) {
+        requestId = createId();
+        sentDescription = description;
+      }
+      analyseNow(go);
+    });
+    show(
+      h('label', { for: 'describe-text' }, h('strong', {}, 'What did you eat or drink?')),
+      h('p', { class: 'hint', id: 'describe-hint' }, 'Include amounts if you know them: “2 slices of wholemeal toast with butter, a medium banana and a mug of tea with milk”. Household measures are fine.'),
+      area,
+      message ? h('p', { class: 'notice-inline notice-inline--error', id: 'scan-error', role: 'alert' }, message) : null,
+      h(
+        'div',
+        { class: 'notice-inline small', id: 'scan-consent' },
+        h('p', {}, 'When you press “Find the foods”, your description goes to our server and then to ', h('span', { id: 'describe-provider' }, providerText(providers)), ', which lists the foods and estimates the amounts in grams. Nutrients always come from the USDA food database, and you check everything before it is saved. We do not keep the description. ', h('a', { href: 'privacy.html' }, 'Privacy notice'), '.'),
+      ),
+      h('div', { class: 'form__actions' }, go),
+      manualLink(),
+    );
+  }
+
   /* ---------- Step 1: pick ---------- */
   function renderPick(message) {
+    if (isText) {
+      renderDescribe(message);
+      return;
+    }
     const take = h('input', { type: 'file', accept: 'image/*', capture: 'environment', id: 'scan-camera', class: 'visually-hidden' });
     const pick = h('input', { type: 'file', accept: 'image/jpeg,image/png,image/webp,image/*', id: 'scan-file', class: 'visually-hidden' });
     for (const input of [take, pick]) input.addEventListener('change', () => choose(input.files?.[0]));
@@ -135,16 +181,19 @@ export function scanPanel({ store, meal, localDate, saveToLibrary, onSaved, onMa
     const cancel = h('button', { type: 'button', class: 'button button--ghost', id: 'scan-cancel' }, 'Cancel');
     cancel.addEventListener('click', () => controller?.abort());
     show(
-      h('img', { src: previewUrl, alt: 'Your meal photo', class: 'scan-preview' }),
-      h('p', { class: 'state state--loading', role: 'status', id: 'scan-loading' }, 'Analysing your photo. This can take up to 30 seconds…'),
+      isText ? h('blockquote', { class: 'describe-quote' }, description) : h('img', { src: previewUrl, alt: 'Your meal photo', class: 'scan-preview' }),
+      h('p', { class: 'state state--loading', role: 'status', id: 'scan-loading' }, isText ? 'Working out the foods and amounts…' : 'Analysing your photo. This can take up to 30 seconds…'),
       h('div', { class: 'form__actions' }, cancel),
     );
     try {
-      result = await scanMeal(photo, { requestId, signal: controller.signal });
+      result = isText
+        ? await describeMeal(description, { requestId, signal: controller.signal })
+        : await scanMeal(photo, { requestId, signal: controller.signal });
     } catch (error) {
       controller = null;
-      if (error.code === 'cancelled') renderConsent();
-      else renderConsent(error.message);
+      const back = isText ? renderDescribe : renderConsent;
+      if (error.code === 'cancelled') back();
+      else back(error.message);
       return;
     }
     controller = null;
@@ -155,10 +204,10 @@ export function scanPanel({ store, meal, localDate, saveToLibrary, onSaved, onMa
   /* ---------- Step 3: review and confirm ---------- */
   function renderReview(errorMessage) {
     if (!result.isFood || result.imageQuality === 'unusable') {
-      const again = h('button', { type: 'button', class: 'button' }, 'Try another photo');
+      const again = h('button', { type: 'button', class: 'button' }, isText ? 'Change the description' : 'Try another photo');
       again.addEventListener('click', () => renderPick());
       show(
-        h('p', { class: 'notice-inline', id: 'scan-nothing', role: 'status' }, result.isFood ? 'The photo is too unclear to identify the food.' : 'No food or drink was found in this photo.'),
+        h('p', { class: 'notice-inline', id: 'scan-nothing', role: 'status' }, isText ? 'No food or drink was found in that description.' : result.isFood ? 'The photo is too unclear to identify the food.' : 'No food or drink was found in this photo.'),
         h('div', { class: 'form__actions' }, again),
         manualLink(),
       );
@@ -174,7 +223,7 @@ export function scanPanel({ store, meal, localDate, saveToLibrary, onSaved, onMa
     const save = h('button', { type: 'button', class: 'button button--primary', id: 'scan-save' }, `Add to ${mealLabel(meal)}`);
     save.addEventListener('click', () => saveAll(confirm, save));
     show(
-      h('img', { src: previewUrl, alt: 'Your meal photo', class: 'scan-preview scan-preview--small' }),
+      isText ? h('blockquote', { class: 'describe-quote' }, description) : h('img', { src: previewUrl, alt: 'Your meal photo', class: 'scan-preview scan-preview--small' }),
       result.imageQuality === 'poor' ? h('p', { class: 'notice-inline' }, 'The photo is not very clear, so check each item carefully.') : null,
       h('p', { class: 'small muted', id: 'scan-disclaimer' }, result.disclaimer),
       errorMessage ? h('p', { class: 'notice-inline notice-inline--error', id: 'scan-error', role: 'alert', tabindex: '-1' }, errorMessage) : null,
@@ -191,7 +240,7 @@ export function scanPanel({ store, meal, localDate, saveToLibrary, onSaved, onMa
         : null,
       totalsHost,
       h('label', { class: 'checkbox checkbox--top', for: 'scan-confirm' }, confirm, h('span', {}, 'I have checked the foods and amounts.')),
-      h('div', { class: 'form__actions' }, save),
+      h('div', { class: 'form__actions' }, save, isText ? editDescription() : null),
       manualLink(),
     );
     renderTotals(totalsHost);
@@ -237,6 +286,12 @@ export function scanPanel({ store, meal, localDate, saveToLibrary, onSaved, onMa
       finder,
       remove,
     );
+  }
+
+  function editDescription() {
+    const b = h('button', { type: 'button', class: 'button button--ghost', id: 'describe-edit' }, 'Change the description');
+    b.addEventListener('click', () => renderDescribe());
+    return b;
   }
 
   /** Search the food database for a (better) match for one item. Open when it has no match. */

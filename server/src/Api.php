@@ -65,9 +65,11 @@ final class Api
                     $config = $config->withOverrides(['openai_api_key' => '', 'anthropic_api_key' => '']);
                 }
                 $controller = self::scan($config);
-                [$status, $body, $headers] = ($_GET['action'] ?? '') === 'feedback'
-                    ? $controller->feedback($_SERVER, (string) file_get_contents('php://input'))
-                    : $controller->handle($_SERVER, $_FILES);
+                [$status, $body, $headers] = match ($_GET['action'] ?? '') {
+                    'feedback' => $controller->feedback($_SERVER, (string) file_get_contents('php://input')),
+                    'describe' => $controller->describe($_SERVER, (string) file_get_contents('php://input')),
+                    default => $controller->handle($_SERVER, $_FILES),
+                };
                 self::send($status, $body, $headers);
 
                 return;

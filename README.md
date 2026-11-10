@@ -81,6 +81,7 @@ Calorie estimates for sessions stay optional, labelled and separate from daily e
 - **AI meal scan** (Food → Scan photo, once an OpenAI or Anthropic key is set):
   - take or choose a photo, read where it goes, then confirm;
   - OpenAI or Claude (chosen in the admin panel, or alternating to compare them) suggests foods and portion ranges, and each is matched to USDA FoodData Central;
+  - **Describe** (Food → Describe): type what you ate, such as "2 slices of toast with butter and a banana"; the AI turns it into foods and grams, and nutrients come from the database as for photos;
   - the admin panel compares the two on real scans: cost per scan, speed, success rate, and how many suggestions people kept;
   - you correct matches and grams and add hidden items such as oil;
   - nutrients are calculated from the database, and nothing is saved until you confirm.

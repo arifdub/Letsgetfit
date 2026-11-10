@@ -17,25 +17,38 @@ export class ScanError extends Error {
  * @param {Blob} photo  already re-encoded JPEG
  * @param {{ requestId: string, signal?: AbortSignal }} options  the same requestId for retries
  */
-export async function scanMeal(photo, { requestId, signal } = {}) {
+export function scanMeal(photo, { requestId, signal } = {}) {
+  const form = new FormData();
+  form.append('photo', photo, 'meal.jpg');
+  return request('api/scan.php', { body: form, headers: {} }, { requestId, signal, what: 'photo' });
+}
+
+/**
+ * Foods and amounts from a description such as "2 slices of toast with butter".
+ * @param {string} text
+ * @param {{ requestId: string, signal?: AbortSignal }} options  the same requestId for retries
+ */
+export function describeMeal(text, { requestId, signal } = {}) {
+  return request('api/scan.php?action=describe', { body: JSON.stringify({ text }), headers: { 'Content-Type': 'application/json' } }, { requestId, signal, what: 'description' });
+}
+
+async function request(url, { body: payload, headers: extra }, { requestId, signal, what }) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(new DOMException('Timed out', 'TimeoutError')), TIMEOUT_MS);
   const onAbort = () => controller.abort(signal.reason);
   signal?.addEventListener('abort', onAbort, { once: true });
-  const form = new FormData();
-  form.append('photo', photo, 'meal.jpg');
   let res;
   try {
-    res = await fetch('api/scan.php', {
+    res = await fetch(url, {
       method: 'POST',
-      body: form,
+      body: payload,
       credentials: 'same-origin',
-      headers: { 'X-Scan-Consent': 'yes', 'X-Request-Id': requestId, Accept: 'application/json' },
+      headers: { 'X-Scan-Consent': 'yes', 'X-Request-Id': requestId, Accept: 'application/json', ...extra },
       signal: controller.signal,
     });
   } catch {
-    if (signal?.aborted) throw new ScanError('cancelled', 'Scan cancelled.');
-    if (controller.signal.aborted) throw new ScanError('timeout', 'The photo took too long to analyse. Try again, or add the food yourself.');
+    if (signal?.aborted) throw new ScanError('cancelled', 'Cancelled.');
+    if (controller.signal.aborted) throw new ScanError('timeout', `The ${what} took too long to analyse. Try again, or add the food yourself.`);
     throw new ScanError('offline', 'Could not reach LetsGetFit. Check your connection, or add the food yourself.');
   } finally {
     clearTimeout(timer);
@@ -48,7 +61,7 @@ export async function scanMeal(photo, { requestId, signal } = {}) {
     body = null;
   }
   if (!res.ok || !body || !Array.isArray(body.items)) {
-    const message = typeof body?.message === 'string' && body.message.length < 240 ? body.message : 'Photo analysis is not available right now. Add the food yourself.';
+    const message = typeof body?.message === 'string' && body.message.length < 240 ? body.message : 'Analysis is not available right now. Add the food yourself.';
     throw new ScanError(body?.error ?? `http_${res.status}`, message);
   }
   // Re-validate everything from the server.

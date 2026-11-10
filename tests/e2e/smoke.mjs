@@ -1123,6 +1123,45 @@ await check('scan: consent first, one request on double tap, review, corrections
   await context.close();
 });
 
+await check('describe: type what you ate, review database matches, save with database nutrients', async () => {
+  const bodies = [];
+  const { page, context, errors } = await freshPage({}, { aiScan: 'enabled', scanProviders: ['Claude (Anthropic)'] });
+  await page.route('**/api/scan.php?action=describe', async (route) => {
+    bodies.push({ body: JSON.parse(route.request().postData()), headers: route.request().headers() });
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ...SCAN_REPLY, items: [SCAN_REPLY.items[0]], questions: ['Was it a large apple?'] }) });
+  });
+  await openScan(page);
+  await page.click('[data-tab="describe"]');
+  await page.waitForSelector('#describe-text');
+  assert.match(await page.textContent('#scan-consent'), /Anthropic \(Claude\).*Nutrients always come from the USDA food database/s);
+  await page.click('#describe-go');
+  await page.waitForSelector('#scan-error');
+  assert.equal(bodies.length, 0, 'nothing sent for an empty description');
+  await page.fill('#describe-text', 'one apple, sliced');
+  await page.dblclick('#describe-go');
+  await page.waitForSelector('.scan-item');
+  assert.equal(bodies.length, 1, 'double tap sends once');
+  assert.deepEqual(bodies[0].body, { text: 'one apple, sliced' });
+  assert.equal(bodies[0].headers['x-scan-consent'], 'yes');
+  assert.match(await page.textContent('.describe-quote'), /one apple, sliced/);
+  assert.match(await page.textContent('#scan-totals [data-nutrient="energy"]'), /^62 kcal$/, '120 g at 52 kcal/100 g from the database');
+  // Changing the description and sending again uses a new request.
+  await page.click('#describe-edit');
+  assert.equal(await page.inputValue('#describe-text'), 'one apple, sliced');
+  await page.fill('#describe-text', 'two apples');
+  await page.click('#describe-go');
+  await page.waitForSelector('.scan-item');
+  assert.equal(bodies.length, 2);
+  assert.notEqual(bodies[1].headers['x-request-id'], bodies[0].headers['x-request-id']);
+  await page.check('#scan-confirm');
+  await page.click('#scan-save');
+  await page.waitForSelector('[data-meal="lunch"] .entry');
+  const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('letsgetfit.data')));
+  assert.equal(stored.diary.find((e) => e.sourceId === '171688').nutrients.energy, 62.4, 'stored unrounded from the database');
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
 await check('scan: the consent names the AI service in use, including both when alternating', async () => {
   for (const [providers, pattern] of [[['Claude (Anthropic)'], /then to Anthropic \(Claude\), which suggests/], [['OpenAI', 'Claude (Anthropic)'], /OpenAI or Anthropic \(Claude\) \(the site uses both/]]) {
     const { page, context, errors } = await freshPage({}, { aiScan: 'enabled', scanProviders: providers, scanRoute: (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(SCAN_REPLY) }) });

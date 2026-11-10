@@ -255,3 +255,50 @@ test('provider choice: falls back to the configured one; alternate uses both', {
   t.after(() => paused.stop());
   assert.equal((await scan(paused.app.url)).body.error, 'not_configured');
 });
+
+const describe = (url, text, { requestId = randomUUID(), consent = true, origin } = {}) =>
+  fetch(`${url}/api/scan.php?action=describe`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Request-Id': requestId, ...(consent ? { 'X-Scan-Consent': 'yes' } : {}), ...(origin ? { Origin: origin } : {}) },
+    body: JSON.stringify({ text }),
+  }).then(async (r) => ({ status: r.status, body: await r.json() }));
+
+test('describe: foods and grams from a description, nutrients from the database, same safeguards', { skip }, async (t) => {
+  const s = await setup();
+  t.after(() => s.stop());
+  const requestId = randomUUID();
+  const r = await describe(s.app.url, 'a medium apple with 2 tablespoons of peanut butter', { requestId });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.deepEqual(r.body.items.map((i) => [i.name, i.gramsEstimate]), [['Apple', 180], ['Peanut butter', 32]]);
+  assert.equal(r.body.items[0].candidates[0].source, 'usda-fdc');
+  assert.ok(Number.isFinite(r.body.items[0].candidates[0].per100g.energy), 'nutrients from the database');
+  assert.ok(!('energy' in r.body.items[0]), 'no AI nutrient numbers');
+  assert.deepEqual(r.body.questions, ['Was the peanut butter smooth or crunchy?']);
+  // A repeat with the same request ID is not charged again.
+  const calls = s.aiCalls();
+  assert.equal((await describe(s.app.url, 'a medium apple with 2 tablespoons of peanut butter', { requestId })).body.repeat, true);
+  assert.equal(s.aiCalls(), calls);
+  // Safeguards.
+  assert.equal((await describe(s.app.url, 'apple', { consent: false })).body.error, 'consent_required');
+  assert.equal((await describe(s.app.url, 'x')).body.error, 'too_short');
+  assert.equal((await describe(s.app.url, 'a'.repeat(1001))).body.error, 'too_long');
+  assert.equal((await describe(s.app.url, 'apple', { origin: 'https://evil.example' })).status, 403);
+  assert.equal((await describe(s.app.url, 'apple', { requestId: 'x' })).body.error, 'bad_request');
+  const nf = await describe(s.app.url, 'a spaceship');
+  assert.deepEqual([nf.status, nf.body.isFood, nf.body.items], [200, false, []]);
+  // Nothing about the description is stored.
+  const stored = readdirSync(path.join(s.priv, 'storage'), { recursive: true }).map(String);
+  for (const f of stored.filter((x) => x.endsWith('.json'))) {
+    assert.ok(!readFileSync(path.join(s.priv, 'storage', f), 'utf8').includes('tablespoons'), f);
+  }
+});
+
+test('describe works with Claude too', { skip }, async (t) => {
+  const s = await setup({ ...CLAUDE, scan_provider: 'claude' });
+  t.after(() => s.stop());
+  const r = await describe(s.app.url, 'porridge with blueberries and honey');
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal(r.body.provider, 'Claude (Anthropic)');
+  assert.equal(r.body.items[0].name, 'Porridge');
+  assert.equal(s.claudeCalls(), 1);
+});
