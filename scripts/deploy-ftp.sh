@@ -53,6 +53,14 @@ case "$(printf '%s' "${ACCOUNTS_ENABLED:-}" | tr '[:upper:]' '[:lower:]' | tr -d
   *) ACCOUNTS_ENABLED="" ;;
 esac
 export ACCOUNTS_ENABLED
+# Which server settings this deploy can see (names only, never values), to help find a secret
+# saved under the wrong name or in the wrong place.
+seen=""; unseen=""
+for name in ACCOUNTS_ENABLED APP_HASH_SECRET ADMIN_EMAIL ADMIN_SETUP_TOKEN DB_HOST DB_NAME DB_USER DB_PASSWORD SMTP_HOST SMTP_PORT SMTP_SECURE SMTP_USER SMTP_PASSWORD MAIL_FROM FDC_API_KEY OPENAI_API_KEY; do
+  if [ -n "${!name:-}" ]; then seen="$seen $name"; else unseen="$unseen $name"; fi
+done
+echo "deploy-ftp: settings found:${seen:- none}"
+echo "deploy-ftp: settings not set:${unseen:- none}"
 SOURCE="${DEPLOY_SOURCE:-$REPO_ROOT/public}"
 SERVER_SOURCE="${DEPLOY_SERVER_SOURCE:-$REPO_ROOT/server}"
 MARKER=".letsgetfit-docroot"
