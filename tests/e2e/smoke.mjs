@@ -52,6 +52,7 @@ async function mockApi(page, { health = 'configured', search, aiScan = 'disabled
     return route.fulfill({ status: 200, contentType: 'application/json', body: '{"ok":true,"counted":true}' });
   });
   await page.route('**/api/account.php?*', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: '{"enabled":false}' }));
+  await page.route('**/api/push.php?*', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: '{"enabled":false}' }));
   await page.route('**/api/foods.php?*', (route) => {
     const q = new URL(route.request().url()).searchParams.get('q');
     if (search) return search(route, q);
@@ -100,6 +101,31 @@ await check('loads without errors and shows only working navigation', async () =
   await page.goto(`${BASE}#account`);
   await page.waitForSelector('#account-panel .card');
   assert.match(await page.textContent('#account-panel'), /Accounts are not available/);
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+await check('installable app: manifest, icons, service worker, offline reload', async () => {
+  const { page, context, errors } = await freshPage();
+  const manifestUrl = await page.getAttribute('link[rel="manifest"]', 'href');
+  const manifest = await (await page.request.get(`${BASE}${manifestUrl}`)).json();
+  assert.equal(manifest.display, 'standalone');
+  assert.ok(manifest.icons.some((i) => i.purpose === 'maskable'));
+  for (const icon of manifest.icons) assert.equal((await page.request.get(`${BASE}${icon.src}`)).status(), 200, icon.src);
+  assert.equal((await page.request.get(`${BASE}icons/apple-touch-icon.png`)).status(), 200);
+  // The service worker takes control, and the app still opens with the network off.
+  await page.evaluate(() => navigator.serviceWorker.ready);
+  await page.reload();
+  await page.waitForFunction(() => navigator.serviceWorker.controller !== null);
+  await page.goto(`${BASE}#settings`);
+  await page.waitForSelector('#install-status');
+  assert.match(await page.textContent('#app-card'), /Install the app/);
+  assert.match(await page.textContent('#push-status'), /not available yet/);
+  await context.setOffline(true);
+  await page.reload();
+  await page.waitForSelector('html[data-ready="true"]');
+  assert.equal(await page.isVisible('#settings-title'), true, 'works offline');
+  await context.setOffline(false);
   assert.deepEqual(errors, []);
   await context.close();
 });

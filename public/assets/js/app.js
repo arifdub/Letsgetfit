@@ -10,9 +10,10 @@ import { initTraining } from './ui/training.js';
 import { initProgress } from './ui/progress.js';
 import { initAccount } from './ui/account.js';
 import { initAdmin } from './ui/admin.js';
+import { captureInstallPrompt, registerServiceWorker, initAppSettings } from './ui/app-settings.js';
 import { $, $$, toast } from './ui/dom.js';
 
-export const APP_VERSION = '0.5.0';
+export const APP_VERSION = '0.6.0';
 const ROUTES = ['overview', 'food', 'workouts', 'progress', 'account', 'admin', 'settings'];
 let onRoute = () => {};
 
@@ -57,6 +58,7 @@ function start() {
   initProgress(store);
   initWeights(store);
   initSettings(store);
+  initAppSettings();
   const account = initAccount(store);
   const adminPanel = initAdmin(account);
   onRoute = (route) => {
@@ -88,6 +90,9 @@ function start() {
   showRoute(currentRoute(), { focus: false });
   document.documentElement.dataset.ready = 'true';
 }
+
+captureInstallPrompt();
+registerServiceWorker();
 
 try {
   start();

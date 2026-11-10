@@ -14,6 +14,8 @@ use LetsGetFit\Http\CurlHttpClient;
 use LetsGetFit\Mail\Mailer;
 use LetsGetFit\Mail\OutboxMailer;
 use LetsGetFit\Mail\SmtpMailer;
+use LetsGetFit\Push\PushController;
+use LetsGetFit\Push\PushService;
 use LetsGetFit\Scan\ImageProcessor;
 use LetsGetFit\Scan\ClaudeVision;
 use LetsGetFit\Scan\OpenAiVision;
@@ -47,10 +49,12 @@ final class Api
         });
         try {
             $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
-            if ($endpoint === 'account' || $endpoint === 'admin') {
-                [$status, $body, $headers] = $endpoint === 'account'
-                    ? self::account(Config::load($privateDir))
-                    : self::admin(Config::load($privateDir));
+            if ($endpoint === 'account' || $endpoint === 'admin' || $endpoint === 'push') {
+                [$status, $body, $headers] = match ($endpoint) {
+                    'account' => self::account(Config::load($privateDir)),
+                    'admin' => self::admin(Config::load($privateDir)),
+                    'push' => self::push(Config::load($privateDir)),
+                };
                 self::send($status, $body, $headers);
 
                 return;
@@ -142,7 +146,7 @@ final class Api
         if ($pdo === null) {
             return [503, ['enabled' => false, 'error' => 'database_unavailable', 'message' => 'Accounts are not available right now. Everything still works on this device.'], ['Cache-Control' => 'no-store']];
         }
-        if (self::migrator($pdo)->pending() !== []) {
+        if (array_intersect(self::migrator($pdo)->pending(), self::ACCOUNT_MIGRATIONS) !== []) {
             return [200, ['enabled' => false, 'setupRequired' => true, 'message' => 'Accounts are being set up. Everything still works on this device.'], ['Cache-Control' => 'no-store']];
         }
         $config = self::effective($fileConfig, $pdo);
@@ -158,6 +162,55 @@ final class Api
         );
 
         return $controller->handle($_SERVER, $_GET, (string) file_get_contents('php://input'));
+    }
+
+    /** Migrations accounts need; later ones (like push) only switch their own feature off until applied. */
+    public const ACCOUNT_MIGRATIONS = ['001_accounts', '002_passwordless_admin'];
+
+    /** @return array{0: int, 1: array<string, mixed>, 2: array<string, string>} */
+    public static function push(Config $fileConfig): array
+    {
+        $off = [200, ['enabled' => false, 'message' => 'Notifications are not available yet.'], ['Cache-Control' => 'no-store']];
+        if (!$fileConfig->bool('accounts_enabled') || !PushService::available()) {
+            return $off;
+        }
+        $pdo = self::connect($fileConfig);
+        if ($pdo === null || in_array('003_push_notifications', self::migrator($pdo)->pending(), true)) {
+            return $off;
+        }
+        $config = self::effective($fileConfig, $pdo);
+        if (!$config->bool('push_enabled')) {
+            return $off;
+        }
+        $storage = $config->string('storage_dir');
+        $controller = new PushController(
+            $pdo,
+            self::pushService($pdo, $config),
+            new SessionManager($config, $storage),
+            new RateLimiter($storage . '/ratelimit', self::secret($config)),
+            $config,
+        );
+
+        return $controller->handle($_SERVER, $_GET, (string) file_get_contents('php://input'));
+    }
+
+    public static function pushService(PDO $pdo, Config $config): PushService
+    {
+        return new PushService($pdo, $config, $config->string('storage_dir') . '/push');
+    }
+
+    /** "enabled", "off" or "setup" (the database table is not created yet), without loading packages. */
+    private static function pushStatus(Config $config): string
+    {
+        if (!$config->bool('accounts_enabled') || !$config->bool('push_enabled') || !extension_loaded('openssl')) {
+            return 'off';
+        }
+        $pdo = self::connect($config);
+        if ($pdo === null) {
+            return 'off';
+        }
+
+        return in_array('003_push_notifications', self::migrator($pdo)->pending(), true) ? 'setup' : 'enabled';
     }
 
     /** @return array{0: int, 1: array<string, mixed>, 2: array<string, string>} */
@@ -183,6 +236,7 @@ final class Api
             self::settingsStore($pdo, $config),
             self::migrator($pdo),
             self::scanStats($config),
+            PushService::available() ? self::pushService($pdo, $config) : null,
         );
         [$status, $body, $headers] = $controller->handle($_SERVER, $_GET, (string) file_get_contents('php://input'));
 
@@ -297,6 +351,7 @@ final class Api
             'aiScan' => !self::visionProvider($config)->configured() || !$config->bool('scan_enabled') ? 'disabled' : (ImageProcessor::available() && $curl ? 'enabled' : 'unavailable'),
             // Which AI services a photo may go to, so the app can say so before the user agrees.
             'scanProviders' => self::scanProviderLabels($config),
+            'push' => self::pushStatus($config),
             'gd' => ImageProcessor::available(),
             'pdoMysql' => extension_loaded('pdo_mysql'),
             // ?packages=1 loads the Composer packages, to prove they work on this PHP version.

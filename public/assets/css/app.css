@@ -412,6 +412,11 @@ input[type="radio"], input[type="checkbox"] {
 .entry__notes { font-size: 0.92rem; overflow-wrap: anywhere; }
 .entry__actions { display: flex; gap: 0.5rem; }
 .entry__actions--wrap { flex-wrap: wrap; }
+.reminders { border: 0; padding: 0; margin: 0.75rem 0; }
+.reminders legend { font-weight: 700; padding: 0; margin-bottom: 0.25rem; }
+.reminder-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.5rem 1rem; padding: 0.5rem 0; border-bottom: 1px solid var(--border); }
+.reminder-row .checkbox { flex: 1 1 14rem; min-height: 44px; align-items: center; }
+.reminder-row input[type="time"] { min-height: 44px; }
 .form--inline { display: flex; flex-wrap: wrap; gap: 0 0.75rem; align-items: flex-end; }
 .form--inline .field { flex: 1 1 14rem; }
 

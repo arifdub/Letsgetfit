@@ -38,6 +38,7 @@ final class AdminController
         private SettingsStore $settings,
         private Migrator $migrator,
         private ?\LetsGetFit\Scan\ScanStats $scanStats = null,
+        private ?\LetsGetFit\Push\PushService $push = null,
     ) {
     }
 
@@ -88,6 +89,7 @@ final class AdminController
         return match ($action) {
             'settings' => $this->saveSettings($adminId, $body),
             'user' => $this->updateUser($adminId, $body),
+            'broadcast' => $this->broadcast($adminId, $body),
             'test-email' => $this->testEmail($adminId),
             default => AccountController::error(404, 'unknown_action', 'Unknown action.'),
         };
@@ -155,6 +157,7 @@ final class AdminController
                 'secretsStorable' => $this->settings->canStoreSecrets(),
             ],
             'database' => ['applied' => $this->migrator->applied()],
+            'push' => ['subscribers' => $this->pushCount()],
         ], self::noStore()];
     }
 
@@ -250,6 +253,40 @@ final class AdminController
                 'claude' => trim($this->config->string('anthropic_api_key')) !== '',
             ],
         ], self::noStore()];
+    }
+
+    /* ---------------- Notifications ---------------- */
+
+    private function pushCount(): ?int
+    {
+        try {
+            return $this->push?->count();
+        } catch (\PDOException) {
+            return null;
+        }
+    }
+
+    private function broadcast(string $adminId, array $body): array
+    {
+        if ($this->push === null) {
+            return AccountController::error(503, 'push_unavailable', 'Notifications are not available on this server.');
+        }
+        $title = is_string($body['title'] ?? null) ? trim(preg_replace('/\s+/u', ' ', $body['title']) ?? '') : '';
+        $text = is_string($body['body'] ?? null) ? trim(preg_replace('/\s+/u', ' ', $body['body']) ?? '') : '';
+        if ($title === '' || mb_strlen($title) > 60) {
+            return AccountController::error(422, 'bad_title', 'Enter a title of up to 60 characters.', [], 'title');
+        }
+        if ($text === '' || mb_strlen($text) > 200) {
+            return AccountController::error(422, 'bad_body', 'Enter a message of up to 200 characters.', [], 'body');
+        }
+        if ($wait = $this->limiter->hitVisitor('admin:broadcast', 10, 86400)) {
+            return AccountController::rateLimited($wait);
+        }
+        $rows = $this->pdo->query('SELECT * FROM push_subscriptions')->fetchAll();
+        $result = $this->push->send($rows, ['title' => $title, 'body' => $text, 'url' => './', 'tag' => 'announcement']);
+        Audit::log($this->pdo, $adminId, 'push.broadcast', $result['sent'] . ' sent');
+
+        return [200, ['ok' => true, 'message' => "Sent to {$result['sent']} " . ($result['sent'] === 1 ? 'device' : 'devices') . ($result['failed'] ? " ({$result['failed']} could not be reached)" : '') . '.'] + $result, self::noStore()];
     }
 
     /* ---------------- Users ---------------- */

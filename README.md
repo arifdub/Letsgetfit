@@ -86,6 +86,12 @@ Calorie estimates for sessions stay optional, labelled and separate from daily e
   - nutrients are calculated from the database, and nothing is saved until you confirm.
   - **Privacy and cost:** photos are stripped of metadata and not stored, with consent checked on the server, per-visitor and daily limits, and repeat-submission protection.
 
+## Installable app and notifications
+
+- **Install:** LetsGetFit is a progressive web app: a web app manifest with icons (including maskable and Apple touch icons), and a service worker that keeps the last good copy of each page and script, so the app opens offline. Install it from the browser menu, or with **Settings → App and notifications → Install the app**. On iPhone: Safari → Share → Add to Home Screen.
+- **Notifications (opt-in, per device):** reminders for the food diary, weigh-ins and workouts at the person's chosen local times, plus announcements from the admin panel. Encrypted Web Push with VAPID (`minishlink/web-push`); no account needed. On iPhone and iPad they work once the app is installed (iOS 16.4 or later).
+- **Scheduler:** `.github/workflows/reminders.yml` calls the site every 15 minutes; or run `server/bin/send-reminders.php` from a cPanel cron job.
+
 ## Run it locally
 
 Requirements: Node.js 20 or newer (only for the local server and tests; the app itself has no build step).

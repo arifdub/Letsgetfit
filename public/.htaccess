@@ -43,7 +43,7 @@ ErrorDocument 404 /404.html
   <FilesMatch "\.php$">
     Header set Cache-Control "no-store"
   </FilesMatch>
-  <FilesMatch "\.(html|css|js)$">
+  <FilesMatch "\.(html|css|js|webmanifest)$">
     Header set Cache-Control "no-cache"
   </FilesMatch>
   <FilesMatch "\.(svg|png|ico|webp)$">

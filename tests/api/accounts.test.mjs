@@ -68,6 +68,7 @@ async function setup({ enabled = true, migrate: runMigrations = true, extra = {}
       hash_secret: 'test-secret-for-hashing',
       admin_email: 'boss@example.ie',
       setup_token: SETUP_TOKEN,
+      push_allow_local_endpoints: true,
       ...extra,
     })};`,
   );
@@ -182,12 +183,12 @@ test('migrations apply once and report status', { skip }, async (t) => {
   const s = await setup();
   t.after(() => s.stop());
   assert.equal(s.migrate.status, 0, s.migrate.stderr);
-  assert.match(s.migrate.stdout, /Applied: 001_accounts, 002_passwordless_admin/);
+  assert.match(s.migrate.stdout, /Applied: 001_accounts, 002_passwordless_admin, 003_push_notifications/);
   const run = (args) => spawnSync('php', [path.join(s.priv, 'app', 'bin', 'migrate.php'), ...args], { encoding: 'utf8', env: { ...process.env, LETSGETFIT_PRIVATE_DIR: s.priv } });
   assert.match(run([]).stdout, /Nothing to do/);
-  assert.match(run(['--status']).stdout, /Applied: 001_accounts, 002_passwordless_admin\nPending: none/);
+  assert.match(run(['--status']).stdout, /Applied: 001_accounts, 002_passwordless_admin, 003_push_notifications\nPending: none/);
   const tables = JSON.parse(sql('SHOW TABLES', s.dbName).stdout).map((r) => Object.values(r)[0]).sort();
-  assert.deepEqual(tables, ['audit_log', 'login_codes', 'records', 'schema_migrations', 'settings', 'users']);
+  assert.deepEqual(tables, ['audit_log', 'login_codes', 'push_subscriptions', 'records', 'schema_migrations', 'settings', 'users']);
   // The migration CLI cannot be run from the web.
   assert.equal((await fetch(`${s.url}/../letsgetfit-private/app/bin/migrate.php`)).status, 404);
 });
@@ -201,7 +202,7 @@ test('database setup from the admin page needs the setup token, then accounts wo
   assert.deepEqual([me.status, me.body.enabled, me.body.setupRequired], [200, false, true]);
   const status = await c.admin('status');
   assert.equal(status.body.needsSetup, true);
-  assert.deepEqual(status.body.pending, ['001_accounts', '002_passwordless_admin']);
+  assert.deepEqual(status.body.pending, ['001_accounts', '002_passwordless_admin', '003_push_notifications']);
   assert.equal(status.body.setupTokenConfigured, true);
   assert.equal((await c.admin('overview')).body.error, 'setup_required');
   const wrong = await c.admin('setup', { setupToken: 'x'.repeat(30) });
@@ -209,7 +210,7 @@ test('database setup from the admin page needs the setup token, then accounts wo
   assert.equal((await c.admin('setup', { setupToken: SETUP_TOKEN }, { csrf: false })).body.error, 'csrf');
   const ok = await c.admin('setup', { setupToken: SETUP_TOKEN });
   assert.equal(ok.status, 200, JSON.stringify(ok.body));
-  assert.deepEqual(ok.body.applied, ['001_accounts', '002_passwordless_admin']);
+  assert.deepEqual(ok.body.applied, ['001_accounts', '002_passwordless_admin', '003_push_notifications']);
   assert.equal((await c.admin('setup', { setupToken: SETUP_TOKEN })).body.applied.length, 0, 'runs once');
   assert.equal((await c.admin('status')).body.needsSetup, false);
   assert.equal((await c.me()).body.enabled, true);
@@ -646,4 +647,148 @@ test('cleanup removes expired codes and prints no personal data', { skip }, asyn
   assert.match(r.stdout, /Removed 1 expired login codes/);
   assert.equal(JSON.parse(sql('SELECT COUNT(*) AS n FROM login_codes', s.dbName).stdout)[0].n, 0);
   assert.ok(!r.stdout.includes('@'), 'no personal data printed');
+});
+
+// ---------------- Push notifications ----------------
+import { createECDH, randomBytes } from 'node:crypto';
+
+const b64url = (buf) => Buffer.from(buf).toString('base64url');
+function browserSubscription(endpoint) {
+  const ecdh = createECDH('prime256v1');
+  ecdh.generateKeys();
+  return { endpoint, keys: { p256dh: b64url(ecdh.getPublicKey()), auth: b64url(randomBytes(16)) } };
+}
+async function mockPush(t) {
+  const port = await freePort();
+  const log = path.join(mkdtempSync(path.join(tmpdir(), 'lgf-push-')), 'push.log');
+  writeFileSync(log, '');
+  const proc = spawn('php', ['-S', `127.0.0.1:${port}`, path.join(REPO, 'tests', 'php', 'mock-push.php')], { env: { ...process.env, MOCK_PUSH_LOG: log }, stdio: 'ignore' });
+  for (let i = 0; i < 50; i += 1) {
+    try {
+      await fetch(`http://127.0.0.1:${port}/`);
+      break;
+    } catch {
+      await new Promise((r) => setTimeout(r, 100));
+    }
+  }
+  t.after(() => proc.kill());
+  return { url: `http://127.0.0.1:${port}`, deliveries: () => readFileSync(log, 'utf8').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l)) };
+}
+const push = (s, action, body) =>
+  fetch(`${s.url}/api/push.php?action=${action}`, body === undefined ? {} : { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+    .then(async (r) => ({ status: r.status, body: await r.json(), cookies: r.headers.getSetCookie() }));
+
+test('push: anyone can turn on reminders for their device; test, status, off; no cookie set', { skip }, async (t) => {
+  const s = await setup();
+  t.after(() => s.stop());
+  const ps = await mockPush(t);
+  const health = await fetch(`${s.url}/api/health.php`).then((r) => r.json());
+  assert.equal(health.push, 'enabled');
+  const key = await push(s, 'key');
+  assert.equal(key.body.enabled, true);
+  assert.match(key.body.publicKey, /^[A-Za-z0-9_-]{80,90}$/);
+  assert.equal((await push(s, 'key')).body.publicKey, key.body.publicKey, 'stable key');
+  const sub = browserSubscription(`${ps.url}/push/device-1`);
+  const r = await push(s, 'subscribe', { subscription: sub, timezone: 'Europe/Dublin', reminders: [{ type: 'meals', time: '19:30' }] });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.deepEqual(r.cookies, [], 'no session cookie for people who are not logged in');
+  assert.equal((await push(s, 'subscribe', { subscription: sub, reminders: [{ type: 'spam', time: '19:30' }] })).status, 422);
+  assert.equal((await push(s, 'subscribe', { subscription: { endpoint: 'https://evil.example/x', keys: { p256dh: 'short', auth: 'x' } } })).status, 422);
+  assert.equal((await push(s, 'subscribe', { subscription: { ...sub, endpoint: 'http://10.0.0.1/x' } })).status, 422, 'only HTTPS push services');
+  const st = await push(s, 'status', { endpoint: sub.endpoint });
+  assert.deepEqual([st.body.subscribed, st.body.reminders[0].time, st.body.timezone], [true, '19:30', 'Europe/Dublin']);
+  // Test message: encrypted (aes128gcm), signed (VAPID), with a time to live.
+  assert.equal((await push(s, 'test', { endpoint: sub.endpoint })).status, 200);
+  const [d] = ps.deliveries();
+  assert.deepEqual([d.path, d.encoding, d.vapid], ['/push/device-1', 'aes128gcm', true]);
+  assert.ok(d.bytes > 100 && Number(d.ttl) > 0);
+  // Only JSON, same origin.
+  const form = await fetch(`${s.url}/api/push.php?action=subscribe`, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: 'x=1' });
+  assert.equal(form.status, 415);
+  const cross = await fetch(`${s.url}/api/push.php?action=status`, { method: 'POST', headers: { 'Content-Type': 'application/json', Origin: 'https://evil.example' }, body: '{}' });
+  assert.equal(cross.status, 403);
+  // Turn off.
+  assert.equal((await push(s, 'unsubscribe', { endpoint: sub.endpoint })).status, 200);
+  assert.equal((await push(s, 'status', { endpoint: sub.endpoint })).body.subscribed, false);
+  assert.equal((await push(s, 'test', { endpoint: sub.endpoint })).status, 404);
+});
+
+test('push: the scheduler sends due reminders once, needs its token, and drops expired devices', { skip }, async (t) => {
+  const s = await setup();
+  t.after(() => s.stop());
+  const ps = await mockPush(t);
+  const now = new Date();
+  const hhmm = (d) => `${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}`;
+  const dueNow = hhmm(new Date(now.getTime() - 5 * 60000));
+  const later = hhmm(new Date(now.getTime() + 3 * 3600000));
+  const a = browserSubscription(`${ps.url}/push/a`);
+  const gone = browserSubscription(`${ps.url}/push/gone`);
+  const notYet = browserSubscription(`${ps.url}/push/not-yet`);
+  await push(s, 'subscribe', { subscription: a, timezone: 'UTC', reminders: [{ type: 'weight', time: dueNow }] });
+  await push(s, 'subscribe', { subscription: gone, timezone: 'UTC', reminders: [{ type: 'weight', time: dueNow }] });
+  await push(s, 'subscribe', { subscription: notYet, timezone: 'UTC', reminders: [{ type: 'weight', time: later }] });
+  const token = spawnSync('php', ['-r', 'echo hash_hmac("sha256", "letsgetfit-cron", "test-secret-for-hashing");'], { encoding: 'utf8' }).stdout;
+  const cron = (tok) => fetch(`${s.url}/api/push.php?action=cron`, { method: 'POST', headers: tok ? { 'X-Cron-Token': tok } : {} }).then(async (r) => ({ status: r.status, body: await r.json() }));
+  assert.equal((await cron('wrong')).status, 403);
+  assert.equal((await cron()).status, 403);
+  const first = await cron(token);
+  assert.equal(first.status, 200, JSON.stringify(first.body));
+  assert.deepEqual([first.body.checked, first.body.sent, first.body.removed], [3, 1, 1]);
+  assert.deepEqual(ps.deliveries().map((d) => d.path).sort(), ['/push/a', '/push/gone']);
+  assert.equal((await push(s, 'status', { endpoint: gone.endpoint })).body.subscribed, false, 'expired device removed');
+  const second = await cron(token);
+  assert.equal(second.body.sent, 0, 'once a day');
+  // The command-line version does the same.
+  const cli = spawnSync('php', [path.join(s.priv, 'app', 'bin', 'send-reminders.php')], { encoding: 'utf8', env: { ...process.env, LETSGETFIT_PRIVATE_DIR: s.priv } });
+  assert.equal(cli.status, 0, cli.stderr);
+  assert.match(cli.stdout, /Checked 2 devices: 0 reminders sent/);
+  assert.ok(!cli.stdout.includes('127.0.0.1'), 'no addresses printed');
+});
+
+test('push: a logged-in device is linked to the account and removed with it; admin broadcast', { skip }, async (t) => {
+  const s = await setup();
+  t.after(() => s.stop());
+  const ps = await mockPush(t);
+  const member = await codeLogin(s, 'member@example.ie');
+  const sub = browserSubscription(`${ps.url}/push/member`);
+  const res = await fetch(`${s.url}/api/push.php?action=subscribe`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Cookie: [...member.cookies].map(([k, v]) => `${k}=${v}`).join('; ') },
+    body: JSON.stringify({ subscription: sub, reminders: [] }),
+  });
+  assert.equal(res.status, 200);
+  const anon = browserSubscription(`${ps.url}/push/anon`);
+  await push(s, 'subscribe', { subscription: anon });
+  const linked = JSON.parse(sql('SELECT COUNT(*) AS n FROM push_subscriptions WHERE user_id IS NOT NULL', s.dbName).stdout)[0].n;
+  assert.equal(linked, 1);
+  // Admin: subscriber count and a broadcast to every device.
+  const admin = await codeLogin(s, 'boss@example.ie');
+  assert.equal((await admin.admin('overview')).body.push.subscribers, 2);
+  assert.equal((await member.admin('broadcast', { title: 'Hi', body: 'x' })).status, 403, 'admins only');
+  assert.equal((await admin.admin('broadcast', { title: '', body: 'x' })).body.error, 'bad_title');
+  const b = await admin.admin('broadcast', { title: 'New in LetsGetFit', body: 'Photo scanning is now available.' });
+  assert.equal(b.status, 200, JSON.stringify(b.body));
+  assert.equal(b.body.sent, 2);
+  assert.equal(ps.deliveries().length, 2);
+  // Deleting the account removes its device.
+  assert.equal((await member.post('delete', { confirm: 'DELETE' })).status, 200);
+  assert.equal(JSON.parse(sql('SELECT COUNT(*) AS n FROM push_subscriptions', s.dbName).stdout)[0].n, 1);
+});
+
+test('push: off while accounts are off, and while its table is not set up', { skip }, async (t) => {
+  const off = await setup({ enabled: false });
+  t.after(() => off.stop());
+  assert.equal((await push(off, 'key')).body.enabled, false);
+  assert.equal((await fetch(`${off.url}/api/health.php`).then((r) => r.json())).push, 'off');
+  const s = await setup({ migrate: false });
+  t.after(() => s.stop());
+  const c = new Client(s.url);
+  await c.admin('status');
+  // Apply only the account migrations: accounts work, push waits for its own.
+  const mig = (v) => spawnSync('php', ['-r', `require "${path.join(s.priv, 'app', 'bootstrap.php')}"; $c = LetsGetFit\\Config::load(getenv("P")); $p = LetsGetFit\\Db\\Database::connect($c); foreach (LetsGetFit\\Db\\Migrator::statements(file_get_contents("${path.join(REPO, 'server', 'migrations')}/" . getenv("V") . ".sql")) as $q) $p->exec($q);`], { encoding: 'utf8', env: { ...process.env, P: s.priv, V: v } });
+  assert.equal(mig('001_accounts').status, 0);
+  assert.equal(mig('002_passwordless_admin').status, 0);
+  assert.equal((await c.me()).body.enabled, true, 'accounts work');
+  assert.equal((await push(s, 'key')).body.enabled, false, 'push waits for its table');
+  assert.equal((await fetch(`${s.url}/api/health.php`).then((r) => r.json())).push, 'setup');
 });

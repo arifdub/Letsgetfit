@@ -68,6 +68,19 @@ All must be done and signed off by the controller. The person running letsgetfit
 - [ ] Have a qualified person carry out an **EU privacy review** of the above.
 - [ ] Then set `ACCOUNTS_ENABLED=true`, run migrations, deploy, and check `/api/health.php`.
 
+## 3a. Push notifications (opt-in, per device)
+
+| Data | Where | Purpose | Retention |
+|---|---|---|---|
+| Push subscription (push service address and the browser's public encryption keys) | Our database, `push_subscriptions` | Deliver reminders and announcements to that device | Until the person turns notifications off, the push service reports the address as gone, repeated delivery failures, or the linked account is deleted |
+| Reminder choices (type, local time, days) and time zone | Same row | Send reminders at the right local time | Same |
+| Account link (user ID) | Same row, only if logged in when turning on | Delete the device with the account | Same |
+
+- Off by default; turned on per device by the person, with the browser's own permission prompt.
+- Messages are end-to-end encrypted (RFC 8291, aes128gcm) and signed with our VAPID key, which is created on the server and kept in private storage. Push services (Google, Apple, Mozilla, Microsoft) see only encrypted messages.
+- Message wording is neutral and contains no personal or health data.
+- The scheduler endpoint needs a token derived from `APP_HASH_SECRET`; push addresses are never logged or shown back.
+
 ## 4. AI meal scan (Phase 5: built, OFF until an OpenAI or Anthropic key is set)
 
 | Data | Where it goes | Purpose | Retention |

@@ -48,6 +48,8 @@ Full steps: **[docs/DATABASE.md](DATABASE.md)**. Privacy launch checklist: **[do
 
 ### Phase 5: AI meal scan (built, switched off)
 
+**Notifications** need accounts switched on (they use the database). After the first deploy with them, open `/#admin` as the admin and press **Update the database** (it adds the `push_subscriptions` table). Reminders are sent by `.github/workflows/reminders.yml` every 15 minutes, using the existing `APP_HASH_SECRET`. Note: GitHub pauses scheduled workflows in repositories with no activity for 60 days; re-enable it from the Actions tab, or add a cPanel cron job instead: `*/15 * * * * php ~/domains/letsgetfit.site/letsgetfit-private/app/bin/send-reminders.php`.
+
 To use Claude instead of (or as well as) OpenAI, add the `ANTHROPIC_API_KEY` secret, and optionally the variables `ANTHROPIC_MODEL` (default `claude-opus-5-5`) and `SCAN_PROVIDER` (`openai`, `claude` or `alternate`). These can also be set later in the admin panel. Switch it on by adding the `OPENAI_API_KEY` repository secret. Optional repository variables: `OPENAI_MODEL` (default `gpt-4o-mini`; any vision-capable model with structured outputs) and `SCAN_DAILY_LIMIT` (default 100 scans a day across the whole site). The deploy log then shows `aiScan: enabled`. If it shows `unavailable`, ask the host to enable the PHP **GD** extension. Set a monthly spending limit in the OpenAI dashboard as well.
 
 

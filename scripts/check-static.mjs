@@ -79,6 +79,30 @@ async function checkImports(file) {
   }
 }
 await checkImports(path.join(ROOT, 'assets', 'js', 'app.js'));
+// The service worker is its own entry point: no imports (a classic worker), and its cached files must exist.
+const swFile = path.join(ROOT, 'sw.js');
+if (existsSync(swFile)) {
+  seen.add(swFile);
+  const sw = await readFile(swFile, 'utf8');
+  if (/^\s*import\s/m.test(sw)) problems.push('sw.js: must not use import (registered as a classic worker)');
+  for (const [, list] of sw.matchAll(/const SHELL = \[([^\]]*)\]/g)) {
+    for (const [, url] of list.matchAll(/'([^']+)'/g)) {
+      if (url !== './' && !existsSync(path.join(ROOT, url))) problems.push(`sw.js: cached file missing: ${url}`);
+    }
+  }
+}
+// The web app manifest: valid JSON, and every icon it names exists.
+const manifestFile = path.join(ROOT, 'manifest.webmanifest');
+if (existsSync(manifestFile)) {
+  try {
+    const manifest = JSON.parse(await readFile(manifestFile, 'utf8'));
+    const icons = [...(manifest.icons ?? []), ...(manifest.shortcuts ?? []).flatMap((s) => s.icons ?? [])];
+    if (!manifest.icons?.some((i) => i.sizes === '512x512') || !manifest.icons?.some((i) => i.sizes === '192x192')) problems.push('manifest.webmanifest: needs 192x192 and 512x512 icons');
+    for (const icon of icons) if (!existsSync(path.join(ROOT, icon.src))) problems.push(`manifest.webmanifest: missing icon ${icon.src}`);
+  } catch {
+    problems.push('manifest.webmanifest: not valid JSON');
+  }
+}
 for (const js of files.filter((f) => f.endsWith('.js'))) {
   if (!seen.has(js)) problems.push(`unused module (not reachable from app.js): ${path.relative(ROOT, js)}`);
 }

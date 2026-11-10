@@ -77,6 +77,9 @@ No Composer dependencies are needed yet. Everything uses PHP's standard library 
 | Scan: browser and server both re-encode the photo; in memory only; idempotency key + lock | Metadata removed twice, nothing stored, and a double tap or retry never charges twice. |
 | Two vision providers behind one `VisionProvider` interface: OpenAI (Chat Completions, strict JSON schema, raw HTTP) and Claude (official Anthropic PHP SDK, structured outputs, adaptive thinking, server-side fallbacks) | Same prompt, schema and sanitising for both, so they can be swapped or compared on real scans. "Alternate" picks one at random per scan. Only counts are kept for the comparison. |
 | OpenAI Chat Completions with a strict JSON schema, behind an adapter | Predictable, validated output. The provider can be swapped by replacing `server/src/Scan/OpenAiVision.php`. |
+| Progressive web app: manifest + a network-first service worker | Installable, opens offline, and never serves stale code when online. The server API is never cached. |
+| Web Push with VAPID through `minishlink/web-push`; subscriptions in the database; scheduler by GitHub Actions (or cron) | Works on shared hosting with no background process. VAPID keys are generated on first use and kept in private storage. Reminders are due once a day within two hours of their local time, so late runs never send at night. |
+| Composer packages loaded lazily | Food search and the health check never load them, so a package problem cannot take the API down. |
 | Units preference kept apart from the profile | Changing display units never changes stored values. |
 | Logged workouts are not added to maintenance | The activity level already includes usual exercise. Adding workouts again would double-count. |
 | Maintenance only; no loss or gain targets | Targets need separately reviewed eligibility rules and safeguards (see `docs/STATUS.md`). |

@@ -80,6 +80,10 @@ final class Config
             'openai_price_output' => 0.60,
             'claude_price_input' => 0.0,           // 0 = use the built-in price for the chosen Claude model
             'claude_price_output' => 0.0,
+
+            // ---- Push notifications (needs accounts_enabled, for the database) ----
+            'push_enabled' => true,                // admins can switch push off
+            'push_allow_local_endpoints' => false, // tests only: allow a local mock push service
         ];
         $file = $privateDir . '/config/app.php';
         $loaded = [];

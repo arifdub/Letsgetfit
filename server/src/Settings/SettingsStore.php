@@ -30,6 +30,7 @@ final class SettingsStore
         'scan_daily_limit' => ['int:1:10000', false],
         'scan_per_visitor_per_day' => ['int:1:500', false],
         'signups_open' => ['bool', false],
+        'push_enabled' => ['bool', false],
         'privacy_contact_email' => ['email', false],
     ];
 

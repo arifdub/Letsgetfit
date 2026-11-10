@@ -9,6 +9,12 @@
   <meta name="theme-color" content="#0d1715" media="(prefers-color-scheme: dark)">
   <meta name="color-scheme" content="light dark">
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="LetsGetFit">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <link rel="stylesheet" href="assets/css/app.css">
   <script type="module" src="assets/js/app.js"></script>
 </head>
@@ -357,6 +363,8 @@
           <button type="button" class="button button--small" data-csv="diary">Food diary</button>
         </div>
       </div>
+
+      <section class="card" id="app-card" aria-labelledby="app-title"></section>
 
       <div class="card" id="settings-account" hidden>
         <h2>Account (optional)</h2>

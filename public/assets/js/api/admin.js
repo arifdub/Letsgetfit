@@ -15,3 +15,4 @@ export const updateUser = (id, op, confirm) => post('user', { id, op, confirm })
 export const testEmail = () => post('test-email');
 export const audit = () => get('audit');
 export const scanStats = () => get('scan-stats');
+export const broadcast = (title, body) => post('broadcast', { title, body });

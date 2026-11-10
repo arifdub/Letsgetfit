@@ -21,6 +21,7 @@ const SETTING_INFO = {
   scan_enabled: { label: 'Allow photo scanning', hint: 'Pause scanning without removing the key.' },
   scan_daily_limit: { label: 'Scans per day (whole site)', hint: 'Caps OpenAI spending over a rolling 24 hours.' },
   scan_per_visitor_per_day: { label: 'Scans per visitor per day', hint: '' },
+  push_enabled: { label: 'Allow notifications', hint: 'When off, no reminders or announcements are sent and people cannot turn notifications on.' },
   signups_open: { label: 'Allow new accounts', hint: 'When off, existing members can still log in. The admin email can always join.' },
   privacy_contact_email: { label: 'Privacy contact email', hint: 'Shown to members on their account page.' },
 };
@@ -68,7 +69,7 @@ export function initAdmin(account) {
         return;
       }
       const [ov, st] = await Promise.all([admin.overview(), admin.settings()]);
-      panel.replaceChildren(overviewCard(ov), settingsCard(st), compareCard(), usersCard(user.email), toolsCard(), auditCard());
+      panel.replaceChildren(overviewCard(ov), settingsCard(st), compareCard(), usersCard(user.email), broadcastCard(ov), toolsCard(), auditCard());
       loadUsers('');
       loadCompare();
     } catch (error) {
@@ -81,15 +82,21 @@ export function initAdmin(account) {
   /* ---------------- Setup ---------------- */
 
   function setupCard(status) {
+    const isAdmin = account.state.user?.role === 'admin';
+    const update = status.pending.every((v) => !/^00[12]_/.test(v));
     const form = h(
       'form',
       { class: 'form', id: 'admin-setup-form', novalidate: true },
       statusBox(),
-      h('p', {}, 'The database is connected but its tables have not been created yet. Pending: ', h('strong', {}, status.pending.join(', ')), '.'),
-      status.setupTokenConfigured
-        ? formField('admin-setup-token', 'Setup token', { name: 'setupToken', type: 'password', autocomplete: 'off', required: true }, 'The value of the ADMIN_SETUP_TOKEN secret you saved in GitHub.')
-        : h('p', { class: 'notice-inline notice-inline--error' }, 'Add an ADMIN_SETUP_TOKEN secret (at least 24 random characters) in GitHub, then deploy again.'),
-      h('div', { class: 'form__actions' }, h('button', { type: 'submit', class: 'button button--primary', disabled: !status.setupTokenConfigured }, 'Set up the database')),
+      h('p', {}, update
+        ? 'A database update is ready for new features. Your data is kept. Pending: '
+        : 'The database is connected but its tables have not been created yet. Pending: ', h('strong', {}, status.pending.join(', ')), '.'),
+      isAdmin
+        ? h('p', { class: 'muted' }, 'You are logged in as an admin, so no setup token is needed.')
+        : status.setupTokenConfigured
+          ? formField('admin-setup-token', 'Setup token', { name: 'setupToken', type: 'password', autocomplete: 'off', required: true }, 'The value of the ADMIN_SETUP_TOKEN secret you saved in GitHub.')
+          : h('p', { class: 'notice-inline notice-inline--error' }, 'Add an ADMIN_SETUP_TOKEN secret (at least 24 random characters) in GitHub, then deploy again.'),
+      h('div', { class: 'form__actions' }, h('button', { type: 'submit', class: 'button button--primary', disabled: !status.setupTokenConfigured && !isAdmin }, update ? 'Update the database' : 'Set up the database')),
     );
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -138,6 +145,7 @@ export function initAdmin(account) {
         row('Photo scan', { enabled: 'On', paused: 'Paused', 'no-key': 'Off (no API key)' }[f.aiScan] ?? f.aiScan),
         row('Scan AI', SETTING_INFO.scan_provider.options[f.scanProvider] ?? f.scanProvider ?? 'OpenAI'),
         row('Email', f.mail),
+        row('Devices with notifications', ov.push?.subscribers == null ? 'Not set up' : formatNumber(ov.push.subscribers)),
       ),
     );
   }
@@ -398,6 +406,44 @@ export function initAdmin(account) {
     } catch (error) {
       toast(error.message, 'error');
     }
+  }
+
+  /* ---------------- Notifications ---------------- */
+
+  function broadcastCard(ov) {
+    const count = ov.push?.subscribers;
+    const form = h(
+      'form',
+      { class: 'form', id: 'admin-broadcast-form', novalidate: true },
+      statusBox(),
+      formField('admin-broadcast-title', 'Title', { name: 'title', type: 'text', maxlength: '60', required: true }, 'Up to 60 characters.'),
+      formField('admin-broadcast-body', 'Message', { name: 'body', type: 'text', maxlength: '200', required: true }, 'Up to 200 characters. Keep it useful: people can turn notifications off.'),
+      h('div', { class: 'form__actions' }, h('button', { type: 'submit', class: 'button button--primary', disabled: !count }, 'Send to all devices')),
+    );
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const ok = await confirmAction({ title: 'Send this notification?', body: `It goes to ${formatNumber(count ?? 0)} ${count === 1 ? 'device' : 'devices'} straight away.`, confirmLabel: 'Send' });
+      if (!ok) return;
+      busy(form, true);
+      try {
+        const res = await admin.broadcast(form.elements.title.value, form.elements.body.value);
+        form.reset();
+        setStatus(form, res.message);
+      } catch (error) {
+        showError(form, error, { title: 'admin-broadcast-title', body: 'admin-broadcast-body' });
+      } finally {
+        busy(form, false);
+      }
+    });
+    return h(
+      'section',
+      { class: 'card', 'aria-labelledby': 'admin-push-title' },
+      h('h2', { id: 'admin-push-title' }, 'Send a notification'),
+      h('p', { class: 'muted', id: 'admin-push-count' }, count == null
+        ? 'Notifications are not set up yet.'
+        : `${formatNumber(count)} ${count === 1 ? 'device has' : 'devices have'} notifications turned on. Reminders are sent automatically at the times people choose.`),
+      count == null ? null : form,
+    );
   }
 
   /* ---------------- Tools and audit ---------------- */

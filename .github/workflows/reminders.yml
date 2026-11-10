@@ -1,0 +1,40 @@
+# Sends push reminders that are due. Every 15 minutes, GitHub calls the site's scheduler endpoint,
+# which checks each device's chosen reminder times. The token is derived from APP_HASH_SECRET, so
+# no extra secret is needed. GitHub may run scheduled jobs a few minutes late; reminders allow for
+# that. Alternative: a cPanel cron job running server/bin/send-reminders.php (docs/DEPLOY-CPANEL.md).
+name: Send reminders
+
+on:
+  schedule:
+    - cron: '7,22,37,52 * * * *'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: reminders
+  cancel-in-progress: false
+
+jobs:
+  send:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Send due reminders
+        env:
+          APP_HASH_SECRET: ${{ secrets.APP_HASH_SECRET }}
+          ACCOUNTS_ENABLED: ${{ vars.ACCOUNTS_ENABLED || secrets.ACCOUNTS_ENABLED }}
+          SITE_URL: ${{ vars.SITE_URL || 'https://letsgetfit.site/' }}
+        run: |
+          if [ -z "$APP_HASH_SECRET" ] || [ -z "$ACCOUNTS_ENABLED" ]; then
+            echo "Accounts or APP_HASH_SECRET are not set up: no reminders to send."
+            exit 0
+          fi
+          token="$(printf '%s' 'letsgetfit-cron' | openssl dgst -sha256 -hmac "$APP_HASH_SECRET" -r | cut -d' ' -f1)"
+          echo "::add-mask::$token"
+          reply="$(curl --silent --show-error --max-time 60 -X POST -H "X-Cron-Token: $token" "${SITE_URL%/}/api/push.php?action=cron" || true)"
+          echo "Reply: $reply"
+          if grep -q '"ok":true' <<<"$reply"; then exit 0; fi
+          if grep -q '"enabled":false' <<<"$reply"; then echo "Notifications are not switched on yet."; exit 0; fi
+          echo "::warning::The reminder scheduler did not answer as expected."
