@@ -35,7 +35,7 @@ ErrorDocument 404 /404.html
   Header always set Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()"
   Header always set Cross-Origin-Opener-Policy "same-origin"
   # Phase 1 loads nothing from other origins. Loosen only for a specific, documented need.
-  Header always set Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+  Header always set Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; connect-src 'self'; font-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
   # Uncomment after HTTPS works for the domain and every subdomain you use:
   # Header always set Strict-Transport-Security "max-age=31536000"
 

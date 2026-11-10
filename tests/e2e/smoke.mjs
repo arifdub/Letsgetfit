@@ -40,12 +40,13 @@ const API_FOODS = [
   },
 ];
 
-async function mockApi(page, { health = 'configured', search } = {}) {
+async function mockApi(page, { health = 'configured', search, aiScan = 'disabled', scanRoute } = {}) {
   await page.route('**/api/health.php', (route) =>
     health === 'down'
       ? route.fulfill({ status: 503, contentType: 'application/json', body: '{"error":"not_configured"}' })
-      : route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, php: '8.3', foodSearch: health }) }),
+      : route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, php: '8.3', foodSearch: health, aiScan }) }),
   );
+  if (scanRoute) await page.route('**/api/scan.php', scanRoute);
   await page.route('**/api/account.php?*', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: '{"enabled":false}' }));
   await page.route('**/api/foods.php?*', (route) => {
     const q = new URL(route.request().url()).searchParams.get('q');
@@ -872,6 +873,198 @@ await check('training: Phase 2 (v2) data upgrades and old workouts still show', 
   assert.equal(stored.schemaVersion, 4);
   assert.equal(stored.workouts[0].type, 'activity');
   assert.equal(stored.diary.length, 1);
+  await context.close();
+});
+
+// ---------------- Phase 5: goals ----------------
+
+await check('goals: healthy range, loss plan, safeguards, and Food page reference', async () => {
+  const { page, context, errors } = await freshPage();
+  await fillMetric(page);
+  await page.waitForSelector('#goal-card');
+  assert.match(await page.textContent('#healthy-range'), /59\.9 kg to 80\.7 kg \(BMI 18\.5 to 24\.9\)/);
+  assert.match(await page.textContent('#goal-plan'), /Daily energy\s*3,290 kcal/);
+  await page.check('input[name="goalType"][value="lose"]');
+  // Below the healthy range is refused.
+  await page.fill('#goal-kg', '55');
+  await page.click('#goal-save');
+  await page.waitForSelector('#goal-target-error:not([hidden])');
+  assert.match(await page.textContent('#goal-target-error'), /lowest target LetsGetFit will set is 59\.9 kg/);
+  await page.fill('#goal-kg', '75');
+  await page.selectOption('#goal-rate', '0.5');
+  await page.click('#goal-save');
+  await page.waitForFunction(() => document.querySelector('#goal-plan')?.textContent.includes('2,740 kcal'));
+  const plan = await page.textContent('#goal-plan');
+  assert.match(plan, /Maintenance estimate\s*3,290 kcal/);
+  assert.match(plan, /Difference\s*−550 kcal a day/);
+  assert.match(plan, /About 10 weeks/);
+  assert.match(await page.textContent('#goal-card'), /Bodywhys/);
+  // Pace options are capped at 1 % of body weight (80 kg -> up to 0.75).
+  await page.click('#goal-card summary');
+  const rates = await page.locator('#goal-rate option').allTextContents();
+  assert.deepEqual(rates, ['0.25 kg a week', '0.5 kg a week', '0.75 kg a week']);
+  // Persisted and shown on the Food page.
+  await page.reload();
+  await page.waitForSelector('#goal-plan');
+  assert.match(await page.textContent('#goal-plan'), /2,740 kcal/);
+  const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('letsgetfit.data')));
+  assert.deepEqual([stored.profile.goal.type, stored.profile.goal.targetKg, stored.profile.goal.ratePerWeekKg], ['lose', 75, 0.5]);
+  await page.goto(`${BASE}#food`);
+  await page.click('[data-add-meal="breakfast"]');
+  await page.click('[data-tab="new"]');
+  await page.fill('#cf-name', 'Toast');
+  await page.fill('#cf-n_energy', '260');
+  await page.click('#custom-food-form button[type="submit"]');
+  await page.click('#amount-save');
+  await page.waitForSelector('#day-reference');
+  assert.match(await page.textContent('#day-reference'), /daily energy for your goal is about 2,740 kcal/);
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+await check('goals: the energy floor is shown, and gain goals are capped at the healthy range', async () => {
+  const { page, context } = await freshPage();
+  await fillMetric(page, { age: '70', height: '160', weight: '58', sex: 'female', activity: 'mostly-seated' });
+  await page.waitForSelector('#goal-card');
+  await page.check('input[name="goalType"][value="lose"]');
+  await page.fill('#goal-kg', '55');
+  await page.selectOption('#goal-rate', '0.5');
+  await page.click('#goal-save');
+  await page.waitForSelector('#goal-floor');
+  assert.match(await page.textContent('#goal-floor'), /kept at 1,200 kcal/);
+  assert.match(await page.textContent('#goal-plan'), /for your goal\s*1,200 kcal/);
+  await page.click('#goal-card summary');
+  await page.check('input[name="goalType"][value="gain"]');
+  await page.fill('#goal-kg', '70');
+  await page.click('#goal-save');
+  await page.waitForSelector('#goal-target-error:not([hidden])');
+  assert.match(await page.textContent('#goal-target-error'), /highest target LetsGetFit will set is 63\.7 kg/);
+  await context.close();
+});
+
+// ---------------- Phase 5: AI meal scan (API mocked) ----------------
+
+const { spawnSync: spawnSyncScan } = await import('node:child_process');
+const MEAL_JPEG = spawnSyncScan('php', ['-r', '$i = imagecreatetruecolor(640, 480); imagefill($i, 0, 0, imagecolorallocate($i, 200, 90, 40)); imagejpeg($i, null, 85);']).stdout;
+const SCAN_REPLY = {
+  isFood: true,
+  imageQuality: 'good',
+  items: [
+    { name: 'Apple slices', gramsEstimate: 120, gramsLow: 90, gramsHigh: 150, confidence: 'high', candidates: [API_FOODS[0]] },
+    { name: 'Mystery dip', gramsEstimate: 40, gramsLow: 20, gramsHigh: 60, confidence: 'low', candidates: [] },
+  ],
+  questions: ['Was any honey or sugar added?'],
+  disclaimer: 'Foods and amounts are suggestions from a photo and may be wrong. A photo cannot show allergens, exact amounts or hidden ingredients.',
+};
+
+async function openScan(page) {
+  await page.goto(`${BASE}#food`);
+  await page.click('[data-add-meal="lunch"]');
+  await page.waitForSelector('[data-tab="scan"]');
+  await page.click('[data-tab="scan"]');
+  await page.waitForSelector('#scan-panel');
+}
+
+await check('scan: hidden unless the server enables it', async () => {
+  const { page, context } = await freshPage();
+  await page.goto(`${BASE}#food`);
+  await page.click('[data-add-meal="lunch"]');
+  await page.waitForSelector('#food-panel:not([hidden])');
+  await page.waitForTimeout(300);
+  assert.equal(await page.locator('[data-tab="scan"]').count(), 0);
+  await context.close();
+});
+
+await check('scan: consent first, one request on double tap, review, corrections and confirmed save', async () => {
+  const requests = [];
+  const { page, context, errors } = await freshPage({}, {
+    aiScan: 'enabled',
+    scanRoute: async (route) => {
+      requests.push(route.request().headers());
+      await new Promise((r) => setTimeout(r, 300));
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(SCAN_REPLY) });
+    },
+  });
+  await openScan(page);
+  await page.setInputFiles('#scan-file', { name: 'meal.jpg', mimeType: 'image/jpeg', buffer: MEAL_JPEG });
+  await page.waitForSelector('#scan-consent');
+  assert.match(await page.textContent('#scan-consent'), /OpenAI/);
+  assert.doesNotMatch(await page.textContent('#scan-panel'), /\bnull\b|undefined/, 'no stray text');
+  assert.match(await page.textContent('#scan-consent'), /removes location and camera details/);
+  assert.equal(requests.length, 0, 'nothing sent before consent');
+  await page.dblclick('#scan-analyse');
+  await page.waitForSelector('.scan-item');
+  assert.equal(requests.length, 1, 'double tap sends once');
+  assert.equal(requests[0]['x-scan-consent'], 'yes');
+  assert.match(requests[0]['x-request-id'], /^[0-9a-f-]{36}$/);
+  assert.match(await page.textContent('#scan-disclaimer'), /cannot show allergens/);
+  assert.doesNotMatch(await page.textContent('#scan-panel'), /\bnull\b|undefined/, 'no stray text');
+  assert.match(await page.textContent('#scan-questions'), /honey or sugar/);
+  assert.equal(await page.inputValue('#scan-grams-0'), '120');
+  assert.match(await page.textContent('#scan-range-0'), /Estimated 90–150 g/);
+  // Totals come from the database entry: 120 g apple at 52 kcal/100 g.
+  assert.match(await page.textContent('#scan-totals [data-nutrient="energy"]'), /^62 kcal$/);
+  // Saving is blocked until every item has a match and the user confirms.
+  await page.click('#scan-save');
+  await page.waitForSelector('#scan-error');
+  assert.match(await page.textContent('#scan-error'), /match for every item/);
+  await page.click('.scan-item[data-index="1"] button:has-text("Remove")');
+  await page.fill('#scan-grams-0', '150');
+  assert.match(await page.textContent('#scan-totals [data-nutrient="energy"]'), /^78 kcal$/);
+  // Add a hidden ingredient by search.
+  await page.click('#scan-panel summary');
+  await page.fill('#scan-add-q', 'apple juice');
+  await page.click('#scan-panel .search-row button');
+  await page.click('#scan-add-results .food-option >> nth=1');
+  await page.waitForSelector('#scan-grams-2');
+  await page.fill('#scan-grams-2', '100');
+  await page.click('#scan-save');
+  await page.waitForSelector('#scan-error');
+  assert.match(await page.textContent('#scan-error'), /Tick the box/);
+  await page.check('#scan-confirm');
+  await page.click('#scan-save');
+  await page.waitForSelector('[data-meal="lunch"] .entry');
+  assert.equal(await page.locator('[data-meal="lunch"] .entry').count(), 2);
+  const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('letsgetfit.data')));
+  const apple = stored.diary.find((e) => e.sourceId === '171688');
+  assert.equal(apple.servingG, 150);
+  assert.equal(apple.nutrients.energy, 78);
+  assert.equal(apple.entryMethod, 'photo-scan');
+  const juice = stored.diary.find((e) => e.sourceId === '2345678');
+  assert.equal(juice.nutrients.fibre, null, 'unknown stays unknown');
+  assert.match(await page.textContent('#day-totals'), /124 kcal/);
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+await check('scan: failures explain and keep manual entry; not-food photo; retry reuses the request ID', async () => {
+  const ids = [];
+  let mode = 'timeout';
+  const { page, context } = await freshPage({}, {
+    aiScan: 'enabled',
+    scanRoute: (route) => {
+      ids.push(route.request().headers()['x-request-id']);
+      if (mode === 'timeout') return route.fulfill({ status: 504, contentType: 'application/json', body: JSON.stringify({ error: 'timeout', message: 'The photo took too long to analyse. Try again, or add the food manually.' }) });
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ...SCAN_REPLY, isFood: false, items: [], questions: [] }) });
+    },
+  });
+  await openScan(page);
+  await page.setInputFiles('#scan-file', { name: 'meal.jpg', mimeType: 'image/jpeg', buffer: MEAL_JPEG });
+  await page.click('#scan-analyse');
+  await page.waitForSelector('#scan-error');
+  assert.match(await page.textContent('#scan-error'), /took too long/);
+  mode = 'notfood';
+  await page.click('#scan-analyse');
+  await page.waitForSelector('#scan-nothing');
+  assert.match(await page.textContent('#scan-nothing'), /No food or drink/);
+  assert.equal(ids[0], ids[1], 'a retry of the same photo reuses its request ID');
+  await page.click('#scan-manual');
+  await page.waitForSelector('#food-search-q');
+  // A file that is not an image is refused in the browser.
+  await page.click('[data-tab="scan"]');
+  await page.setInputFiles('#scan-file', { name: 'notes.txt', mimeType: 'text/plain', buffer: Buffer.from('hello') });
+  await page.waitForSelector('#scan-error');
+  assert.match(await page.textContent('#scan-error'), /Choose a photo/);
   await context.close();
 });
 

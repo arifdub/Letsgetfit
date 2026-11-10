@@ -29,11 +29,20 @@ async function fetchJson(url, timeoutMs, signal) {
 }
 
 /** Whether food search can be offered. Checked once per page load. */
-export function checkSearchAvailable() {
+export function getServerHealth() {
   healthPromise ??= fetchJson('api/health.php', HEALTH_TIMEOUT_MS)
-    .then(({ status, body }) => status === 200 && body?.ok === true && body.foodSearch !== 'unavailable')
-    .catch(() => false);
+    .then(({ status, body }) => (status === 200 && body?.ok === true ? body : null))
+    .catch(() => null);
   return healthPromise;
+}
+
+export function checkSearchAvailable() {
+  return getServerHealth().then((h) => Boolean(h) && h.foodSearch !== 'unavailable');
+}
+
+/** Photo scanning needs an OpenAI key and image processing on the server. */
+export function checkScanAvailable() {
+  return getServerHealth().then((h) => h?.aiScan === 'enabled');
 }
 
 /** For tests and after network changes. */

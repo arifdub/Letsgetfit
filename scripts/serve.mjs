@@ -49,7 +49,7 @@ export function startServer(port = 8080, host = '127.0.0.1') {
       'Cache-Control': 'no-cache',
       'X-Content-Type-Options': 'nosniff',
       'Content-Security-Policy':
-        "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'",
+        "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'",
     });
     res.end(await readFile(file));
   });

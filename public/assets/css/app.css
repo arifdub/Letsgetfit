@@ -558,6 +558,19 @@ input[type="radio"], input[type="checkbox"] {
 .checkbox--top input { margin-top: 0.25rem; }
 .form-status:empty { display: none; }
 
+.goal-stats { margin: 0.75rem 0; grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr); }
+.goal-stats dt, .goal-stats dd { overflow-wrap: anywhere; }
+.goal-stats dd { font-weight: 600; }
+
+/* Meal scan */
+.scan-preview { display: block; max-width: 100%; max-height: 260px; border-radius: var(--radius-small); margin: 0.5rem 0; object-fit: cover; }
+.scan-preview--small { max-height: 140px; }
+.scan-items { list-style: none; margin: 0.75rem 0; padding: 0; display: grid; gap: 0.6rem; }
+.scan-item { border: 1px solid var(--border); border-radius: var(--radius); padding: 0.7rem 0.9rem; display: grid; gap: 0.35rem; }
+.scan-item .badge { margin-left: 0.5rem; }
+.scan-item .inline-inputs { margin-top: 0.25rem; }
+.scan label.button { cursor: pointer; }
+
 [hidden] { display: none !important; }
 
 @media (prefers-reduced-motion: reduce) {
