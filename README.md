@@ -11,7 +11,7 @@ All figures are presented as estimates. The app does not give medical advice or 
 | 1 | Calculator and local tracking: static, no backend | ✅ Complete, live |
 | 2 | Food diary and nutrient data (PHP food search) | ✅ Complete, live |
 | 3 | Exercise library, routines, progress trends | ✅ Complete, live |
-| 4 | Optional accounts and sync | ✅ Built and tested · switched off until launch checklist is done |
+| 4 | Optional accounts, sync, user and admin panels | ✅ Built and tested · switched off until the database and email secrets are added |
 | 5 | Goals and AI meal scan | ✅ Goals live · scan built, switched off until an OpenAI key is added |
 
 Details and acceptance checks: [docs/STATUS.md](docs/STATUS.md).
@@ -58,18 +58,19 @@ Calorie estimates for sessions stay optional, labelled and separate from daily e
 
 ## What Phase 4 adds (switched off in production)
 
-- **Optional accounts:**
-  - sign up with explicit consent for health data, then confirm by email link;
-  - log in, log out and reset your password by email link. A reset logs out every device.
+- **Optional accounts (Account tab):**
+  - join or log in with a 6-digit code sent by email; new accounts give explicit consent for health data first;
+  - add a password later to skip the code; change or remove it; log out everywhere.
+- **Admin panel (`#admin`):** the `ADMIN_EMAIL` account becomes admin. Set up the database with a one-time token, manage API keys (stored encrypted), pause scanning or sign-ups, manage members (disable, admin, delete), send a test email, and read the activity log. Admins never see members' health records.
 - **Sync, opt-in for each device:**
   - a preview shows what will be copied each way;
   - likely duplicates are skipped, the newer change wins, and deletions sync.
 - **Account controls:** download all account data, and delete the account with your password.
 - **Security:**
-  - Argon2id password hashes, hashed single-use tokens, and hardened session cookies;
+  - Argon2id password hashes, hashed single-use login codes, and hardened session cookies;
   - CSRF and origin checks, rate limits, and no way to tell whether an email has an account;
   - every record is scoped to the logged-in user.
-- **Operations:** MySQL or MariaDB migrations, run by hand, plus a cleanup script. Backup and restore are in [docs/DATABASE.md](docs/DATABASE.md); privacy and the launch checklist are in [docs/PRIVACY.md](docs/PRIVACY.md).
+- **Operations:** MySQL or MariaDB migrations, run from the admin page or by hand, plus a cleanup script. **How to enter the database and email details**, backup and restore are in [docs/DATABASE.md](docs/DATABASE.md); privacy and the launch checklist are in [docs/PRIVACY.md](docs/PRIVACY.md).
 
 ## What Phase 5 adds
 
@@ -154,7 +155,7 @@ Each service, and how to run without production credentials:
 | OpenAI API (vision) | 5 (off) | Meal photo suggestions. Secret `OPENAI_API_KEY`; tests use `tests/php/mock-openai.php`. |
 | Open Food Facts | Evaluated, not adopted | Irish and EU branded products and barcodes (see docs/FOOD-DATA.md) |
 | MySQL / MariaDB | 4 (off) | Accounts and sync. Tests use a throwaway database (`LGF_TEST_DB_*` variables); CI uses a MariaDB service. |
-| SMTP / email provider | 4 (off) | Confirmation and reset emails. Development and tests use a private outbox (`mail_transport: outbox`). |
+| SMTP / email provider | 4 (off) | Login code emails. Development and tests use a private outbox (`mail_transport: outbox`). |
 | AI vision provider | 5 | Meal photo suggestions |
 
 ## Sources and limits

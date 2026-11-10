@@ -164,7 +164,8 @@ a:hover { color: var(--primary-strong); }
   padding: 0;
   max-width: var(--max);
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
 }
 .primary-nav a {
   display: flex;
@@ -188,6 +189,10 @@ a:hover { color: var(--primary-strong); }
   stroke-linejoin: round;
 }
 .primary-nav a[aria-current="page"] { color: var(--primary); }
+/* Six tabs (with Account) on the narrowest phones. */
+@media (max-width: 380px) {
+  .primary-nav ul:has(> li:nth-child(6):not([hidden])) a { font-size: 0.68rem; padding-inline: 1px; letter-spacing: -0.01em; }
+}
 .primary-nav a[aria-current="page"] span { text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 4px; }
 
 @media (min-width: 760px) {
@@ -404,6 +409,9 @@ input[type="radio"], input[type="checkbox"] {
 .entry__meta { color: var(--text-muted); font-size: 0.92rem; margin-bottom: 0.1rem; }
 .entry__notes { font-size: 0.92rem; overflow-wrap: anywhere; }
 .entry__actions { display: flex; gap: 0.5rem; }
+.entry__actions--wrap { flex-wrap: wrap; }
+.form--inline { display: flex; flex-wrap: wrap; gap: 0 0.75rem; align-items: flex-end; }
+.form--inline .field { flex: 1 1 14rem; }
 
 .stats { display: grid; grid-template-columns: max-content 1fr; gap: 0.25rem 1rem; }
 .stats dt { font-weight: 600; }

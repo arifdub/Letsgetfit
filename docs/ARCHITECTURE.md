@@ -41,6 +41,7 @@ server/migrations/      SQL migrations (Phase 4), applied by hand with server/bi
 server/src/Accounts, Auth, Db, Mail   accounts, sessions/CSRF, tokens, PDO, PHPMailer/outbox
 server/composer.json    PHPMailer; vendor/ is built in CI and uploaded (Composer not needed on the host)
 public/api/account.php  thin entry point for accounts and sync
+public/api/admin.php    thin entry point for the admin panel (server/src/Admin, Settings)
 ```
 
 No Composer dependencies are needed yet. Everything uses PHP's standard library and the curl extension, so nothing has to be installed on the host.
@@ -65,7 +66,11 @@ No Composer dependencies are needed yet. Everything uses PHP's standard library 
 | Accounts optional, shipped OFF | Health data is never collected server-side until the privacy launch checklist is signed off. A disabled feature answers `{"enabled":false}` and the UI hides it. |
 | Sync = per-record last-write-wins with tombstones; opt-in per device with a preview | Stable UUIDs from Phase 1 make merging safe. Content keys catch the same entry saved on two devices. Logging out unlinks the device, so one person's data can never sync into another's account. |
 | Composite pull cursor (server time, collection, ID) | Paging never skips records written in the same millisecond. |
-| PHP sessions (files in private storage) + `session_version` | No extra infrastructure on shared hosting. A password reset logs out everywhere. |
+| PHP sessions (files in private storage) + `session_version` | No extra infrastructure on shared hosting. Password changes and "log out everywhere" end other sessions. |
+| Email codes first, password optional | Nothing to remember to join; a forgotten password is replaced after a code login. Codes are HMAC-hashed, short-lived and guess-limited. |
+| Roles in the database, admin from `ADMIN_EMAIL` | No admin password in config. The role is re-read on every admin request. |
+| Admin settings in the database, keys encrypted with libsodium | Keys can be changed without a redeploy; a database dump alone does not reveal them. Admin values override the GitHub secrets; clearing them falls back. |
+| Database setup from `#admin` with a one-time token | Shared hosting often has no SSH. Only pending migrations run, once each. |
 | Settings written with `var_export` by `scripts/write-config.php` | Secrets with quotes cannot break or inject into the PHP settings file. |
 | Goals stored on the profile (`profile.goal`), with the plan computed in `lib/goals.js` | Synced with the profile; no schema change. Safeguards are enforced in validation, not just the UI. |
 | AI only suggests foods and grams; nutrients always come from the database | A photo cannot measure nutrients. Database values carry units and unknowns, and diary snapshots stay consistent. |

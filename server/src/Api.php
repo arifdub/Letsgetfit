@@ -5,8 +5,11 @@ declare(strict_types=1);
 namespace LetsGetFit;
 
 use LetsGetFit\Accounts\AccountController;
+use LetsGetFit\Admin\AdminController;
+use LetsGetFit\Auth\LoginCodes;
 use LetsGetFit\Auth\SessionManager;
 use LetsGetFit\Db\Database;
+use LetsGetFit\Db\Migrator;
 use LetsGetFit\Http\CurlHttpClient;
 use LetsGetFit\Mail\Mailer;
 use LetsGetFit\Mail\OutboxMailer;
@@ -14,6 +17,8 @@ use LetsGetFit\Mail\SmtpMailer;
 use LetsGetFit\Scan\ImageProcessor;
 use LetsGetFit\Scan\OpenAiVision;
 use LetsGetFit\Scan\ScanController;
+use LetsGetFit\Settings\SettingsStore;
+use PDO;
 
 /** Wires the endpoints together and writes JSON responses. Called from public/api/*.php. */
 final class Api
@@ -22,14 +27,20 @@ final class Api
     {
         try {
             $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
-            if ($endpoint === 'account') {
-                [$status, $body, $headers] = self::account(Config::load($privateDir));
+            if ($endpoint === 'account' || $endpoint === 'admin') {
+                [$status, $body, $headers] = $endpoint === 'account'
+                    ? self::account(Config::load($privateDir))
+                    : self::admin(Config::load($privateDir));
                 self::send($status, $body, $headers);
 
                 return;
             }
             if ($endpoint === 'scan') {
-                [$status, $body, $headers] = self::scan(Config::load($privateDir))->handle($_SERVER, $_FILES);
+                $config = self::effective(Config::load($privateDir));
+                if (!$config->bool('scan_enabled')) {
+                    $config = $config->withOverrides(['openai_api_key' => '']);
+                }
+                [$status, $body, $headers] = self::scan($config)->handle($_SERVER, $_FILES);
                 self::send($status, $body, $headers);
 
                 return;
@@ -39,7 +50,7 @@ final class Api
 
                 return;
             }
-            $config = Config::load($privateDir);
+            $config = self::effective(Config::load($privateDir));
             [$status, $body, $headers] = match ($endpoint) {
                 'foods' => self::foodSearch($config)->handle($_GET, (string) ($_SERVER['REMOTE_ADDR'] ?? '')),
                 'health' => self::health($config),
@@ -66,31 +77,108 @@ final class Api
         );
     }
 
-    /** @return array{0: int, 1: array<string, mixed>, 2: array<string, string>} */
-    public static function account(Config $config): array
+    /**
+     * Settings saved in the admin panel, applied over the private settings file. Only when accounts
+     * (and so the database) are switched on; any database problem falls back to the file settings.
+     */
+    public static function effective(Config $config, ?PDO $pdo = null): Config
     {
         if (!$config->bool('accounts_enabled')) {
+            return $config;
+        }
+        try {
+            $pdo ??= Database::connect($config);
+
+            return $config->withOverrides(self::settingsStore($pdo, $config)->all());
+        } catch (\Throwable $e) {
+            // Tables not created yet, or the database is down: carry on with the file settings.
+            return $config;
+        }
+    }
+
+    public static function settingsStore(PDO $pdo, Config $config): SettingsStore
+    {
+        // Only the real app secret can encrypt stored keys, so they stay readable after redeploys.
+        return new SettingsStore($pdo, $config->string('hash_secret'));
+    }
+
+    /** Secret for hashing IP addresses and login codes. */
+    public static function secret(Config $config): string
+    {
+        return $config->string('hash_secret') !== '' ? $config->string('hash_secret') : hash('sha256', $config->string('db_password') . __DIR__);
+    }
+
+    /** @return array{0: int, 1: array<string, mixed>, 2: array<string, string>} */
+    public static function account(Config $fileConfig): array
+    {
+        if (!$fileConfig->bool('accounts_enabled')) {
             // A normal answer, not an error: the app simply does not show account features.
             return [200, ['enabled' => false, 'message' => 'Accounts are not available yet. Everything still works on this device.'], ['Cache-Control' => 'no-store']];
         }
-        try {
-            $pdo = Database::connect($config);
-        } catch (\Throwable $e) {
-            error_log('LetsGetFit database error: ' . $e::class);
-
+        $pdo = self::connect($fileConfig);
+        if ($pdo === null) {
             return [503, ['enabled' => false, 'error' => 'database_unavailable', 'message' => 'Accounts are not available right now. Everything still works on this device.'], ['Cache-Control' => 'no-store']];
         }
+        if (self::migrator($pdo)->pending() !== []) {
+            return [200, ['enabled' => false, 'setupRequired' => true, 'message' => 'Accounts are being set up. Everything still works on this device.'], ['Cache-Control' => 'no-store']];
+        }
+        $config = self::effective($fileConfig, $pdo);
         $storage = $config->string('storage_dir');
-        $secret = $config->string('hash_secret') !== '' ? $config->string('hash_secret') : hash('sha256', $config->string('db_password') . __DIR__);
+        $secret = self::secret($config);
         $controller = new AccountController(
             $pdo,
             new SessionManager($config, $storage),
             self::mailer($config),
             new RateLimiter($storage . '/ratelimit', $secret),
             $config,
+            new LoginCodes($pdo, $secret),
         );
 
         return $controller->handle($_SERVER, $_GET, (string) file_get_contents('php://input'));
+    }
+
+    /** @return array{0: int, 1: array<string, mixed>, 2: array<string, string>} */
+    public static function admin(Config $fileConfig): array
+    {
+        if (!$fileConfig->bool('accounts_enabled')) {
+            return [200, ['enabled' => false, 'message' => 'Accounts are switched off, so there is no admin panel yet. See docs/DATABASE.md.'], ['Cache-Control' => 'no-store']];
+        }
+        $pdo = self::connect($fileConfig);
+        if ($pdo === null) {
+            return [503, ['enabled' => false, 'error' => 'database_unavailable', 'message' => 'Could not connect to the database. Check the DB_NAME, DB_USER, DB_PASSWORD and DB_HOST secrets.'], ['Cache-Control' => 'no-store']];
+        }
+        $config = self::effective($fileConfig, $pdo);
+        $storage = $config->string('storage_dir');
+        $secret = self::secret($config);
+        $controller = new AdminController(
+            $pdo,
+            new SessionManager($config, $storage),
+            self::mailer($config),
+            new RateLimiter($storage . '/ratelimit', $secret),
+            $fileConfig,
+            $config,
+            self::settingsStore($pdo, $config),
+            self::migrator($pdo),
+        );
+        [$status, $body, $headers] = $controller->handle($_SERVER, $_GET, (string) file_get_contents('php://input'));
+
+        return [$status, ['enabled' => true] + $body, $headers];
+    }
+
+    private static function connect(Config $config): ?PDO
+    {
+        try {
+            return Database::connect($config);
+        } catch (\Throwable $e) {
+            error_log('LetsGetFit database error: ' . $e::class);
+
+            return null;
+        }
+    }
+
+    private static function migrator(PDO $pdo): Migrator
+    {
+        return new Migrator($pdo, dirname(__DIR__) . '/migrations');
     }
 
     public static function scan(Config $config): ScanController
@@ -135,7 +223,7 @@ final class Api
             'storageWritable' => $storageOk,
             'foodSearch' => $foodSearch,
             'accounts' => $config->bool('accounts_enabled') ? 'enabled' : 'disabled',
-            'aiScan' => trim($config->string('openai_api_key')) === '' ? 'disabled' : (ImageProcessor::available() && $curl ? 'enabled' : 'unavailable'),
+            'aiScan' => trim($config->string('openai_api_key')) === '' || !$config->bool('scan_enabled') ? 'disabled' : (ImageProcessor::available() && $curl ? 'enabled' : 'unavailable'),
             'gd' => ImageProcessor::available(),
             'pdoMysql' => extension_loaded('pdo_mysql'),
         ], ['Cache-Control' => 'no-store']];

@@ -19,26 +19,30 @@ No server-side health data is collected. There is no analytics, advertising, tra
 
 | Data | Purpose | Lawful basis (to confirm in review) | Retention |
 |---|---|---|---|
-| Email address | Account login, confirmation and reset emails | Contract (Art. 6(1)(b)) | Until account deletion |
-| Password hash (Argon2id) | Authentication | Contract | Until account deletion |
+| Email address | Account login by emailed code | Contract (Art. 6(1)(b)) | Until account deletion |
+| Password hash (Argon2id), optional | Authentication without a code | Contract | Until account deletion or removal |
+| Role, last login, disabled date | Running the service, admin tools | Legitimate interests | Until account deletion |
 | Synced records: profile, weights, diary, foods, workouts, preferences | Use the same data on several devices | **Explicit consent** (Art. 9(2)(a)), given by a separate unticked checkbox at sign-up and recorded as `health_consent_at` | Until the user deletes it or deletes the account. Unconfirmed sign-ups are deleted after 7 days. |
 | Session cookie (`__Host-lgf_session`, HttpOnly, Secure, SameSite=Lax) | Keep the user logged in | Strictly necessary | 30 days |
-| Email-confirmation and reset token hashes | Account recovery | Contract | 48 h and 1 h, then removed by cleanup |
+| Login code hashes (keyed) | Sign-in | Contract | 10 minutes; deleted when used, and by cleanup |
+| Audit log (user ID, action, setting name) | Security and accountability | Legitimate interests | 1 year |
+| API keys saved by admins | Running food search and scanning | — (not personal data) | Encrypted until removed |
 | Database backups | Recovery | Legitimate interests | 30 days rolling (`docs/DATABASE.md`) |
 
 **User controls (implemented):**
 - Sync is opt-in for each device, with a preview of exactly what will be copied.
 - Download all account data as JSON.
-- Delete the account, which needs the password and removes the user, every record and every token immediately.
-- Log out on this device. A password reset logs out every device.
+- Delete the account, which needs the password (or a code login in the last 15 minutes) and removes the user and every record immediately.
+- Log out on this device, or on every device. Setting, changing or removing a password logs out other devices.
 - Data on the device is never deleted by account actions.
 
 **Access controls (implemented):**
 - Every query is scoped to the user ID from the server-side session. A client-supplied ID is ignored, and tests prove two users cannot read or change each other's records.
 - CSRF token, JSON-only requests and a same-origin check on every change.
-- Rate limits on sign-up, login (per IP and per email), reset, resend, push and delete.
+- Rate limits on code requests (per IP, and 5 emails an hour per address), code checks (5 wrong guesses per code), password login (per IP and per email), push, delete, setup and admin changes.
 - Generic messages that do not reveal whether an email has an account.
-- Tokens are stored only as hashes. The database user has privileges on its own database only.
+- Login codes are stored only as keyed hashes. The database user has privileges on its own database only.
+- **Admins** see members' emails, roles and dates, and counts of synced records, but never the records themselves. The role is checked in the database on every admin request, and every admin change is in the audit log. An admin cannot disable, demote or delete themselves.
 - Configuration and secrets live outside the web root with permission 600.
 - Logs record error types only: never emails, search text, tokens, passwords or health data. Error responses carry no personal data.
 

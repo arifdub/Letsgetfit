@@ -1,6 +1,6 @@
 {
   "name": "letsgetfit",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "private": true,
   "description": "LetsGetFit: a mobile-first fitness and nutrition web app for letsgetfit.site",
   "type": "module",

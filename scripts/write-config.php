@@ -7,8 +7,9 @@ declare(strict_types=1);
 // quotes or backslashes are safe. Used by scripts/deploy-ftp.sh; never deployed itself.
 //
 // Food search:  FDC_API_KEY, APP_HASH_SECRET
-// Accounts:     ACCOUNTS_ENABLED=true, DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD,
-//               SMTP_HOST, SMTP_PORT, SMTP_SECURE, SMTP_USER, SMTP_PASSWORD, MAIL_FROM, MAIL_FROM_NAME
+// Accounts:     ACCOUNTS_ENABLED=true, APP_HASH_SECRET, DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD,
+//               SMTP_HOST, SMTP_PORT, SMTP_SECURE, SMTP_USER (defaults to MAIL_FROM), SMTP_PASSWORD,
+//               MAIL_FROM, MAIL_FROM_NAME, ADMIN_EMAIL, ADMIN_SETUP_TOKEN
 // Meal scan:    OPENAI_API_KEY, OPENAI_MODEL, SCAN_DAILY_LIMIT
 // Site:         SITE_URL
 
@@ -63,7 +64,9 @@ if ($openAiKey !== '') {
 
 if (env('ACCOUNTS_ENABLED') === 'true') {
     $missing = array_values(array_filter(
-        ['DB_NAME', 'DB_USER', 'DB_PASSWORD', 'SMTP_HOST', 'SMTP_USER', 'SMTP_PASSWORD', 'MAIL_FROM'],
+        // A fixed APP_HASH_SECRET keeps login codes and API keys saved in the admin panel readable
+        // after each deploy (otherwise a random one is made every time).
+        ['APP_HASH_SECRET', 'DB_NAME', 'DB_USER', 'DB_PASSWORD', 'SMTP_HOST', 'SMTP_PASSWORD', 'MAIL_FROM'],
         static fn (string $n): bool => env($n) === '',
     ));
     if ($missing) {
@@ -83,7 +86,17 @@ if (env('ACCOUNTS_ENABLED') === 'true') {
     if (!in_array($secure, ['tls', 'ssl'], true)) {
         fail('SMTP_SECURE must be tls or ssl.');
     }
+    $adminEmail = strtolower(trim(env('ADMIN_EMAIL')));
+    if ($adminEmail !== '' && filter_var($adminEmail, FILTER_VALIDATE_EMAIL) === false) {
+        fail('ADMIN_EMAIL must be an email address.');
+    }
+    $setupToken = env('ADMIN_SETUP_TOKEN');
+    if ($setupToken !== '' && !preg_match('/^[A-Za-z0-9_-]{24,256}$/', $setupToken)) {
+        fail('ADMIN_SETUP_TOKEN must be 24+ letters, numbers, - or _.');
+    }
     $config += [
+        'admin_email' => $adminEmail,
+        'setup_token' => $setupToken,
         'db_dsn' => "mysql:host={$dbHost};port={$dbPort};dbname={$dbName};charset=utf8mb4",
         'db_user' => env('DB_USER'),
         'db_password' => env('DB_PASSWORD'),
@@ -93,7 +106,7 @@ if (env('ACCOUNTS_ENABLED') === 'true') {
         'smtp_host' => env('SMTP_HOST'),
         'smtp_port' => (int) env('SMTP_PORT', $secure === 'ssl' ? '465' : '587'),
         'smtp_secure' => $secure,
-        'smtp_user' => env('SMTP_USER'),
+        'smtp_user' => env('SMTP_USER', $mailFrom),
         'smtp_password' => env('SMTP_PASSWORD'),
         'cookie_secure' => str_starts_with($siteUrl, 'https://'),
     ];

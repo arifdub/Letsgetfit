@@ -314,7 +314,7 @@ test('accounts settings: written safely when switched on with every secret', { s
   const r = await deploy(creds(ftp, {
     ACCOUNTS_ENABLED: 'true', DB_NAME: 'cpuser_lgf', DB_USER: 'cpuser_lgf', DB_PASSWORD: tricky,
     SMTP_HOST: 'mail.letsgetfit.site', SMTP_USER: 'no-reply@letsgetfit.site', SMTP_PASSWORD: tricky, MAIL_FROM: 'no-reply@letsgetfit.site',
-    SITE_URL: ftp.siteUrl,
+    APP_HASH_SECRET: 'a-fixed-secret-for-tests-0123456789', SITE_URL: ftp.siteUrl,
   }));
   assert.equal(r.status, 0, r.stderr + r.stdout);
   assert.match(r.stdout, /accounts will be switched on/);
@@ -329,7 +329,8 @@ test('accounts settings are built with var_export and pass php -l', () => {
   const tricky = `pa'ss\\"word$(x)`;
   const env = {
     PATH: process.env.PATH, ACCOUNTS_ENABLED: 'true', DB_NAME: 'cpuser_lgf', DB_USER: 'cpuser_lgf', DB_PASSWORD: tricky,
-    SMTP_HOST: 'mail.letsgetfit.site', SMTP_USER: 'u', SMTP_PASSWORD: tricky, MAIL_FROM: 'no-reply@letsgetfit.site', FDC_API_KEY: 'abcd1234EFGH',
+    SMTP_HOST: 'mail.letsgetfit.site', SMTP_PASSWORD: tricky, MAIL_FROM: 'no-reply@letsgetfit.site', FDC_API_KEY: 'abcd1234EFGH',
+    APP_HASH_SECRET: 'a-fixed-secret-for-tests-0123456789', ADMIN_EMAIL: ' Owner@Example.ie ', ADMIN_SETUP_TOKEN: 'abcdefghijklmnopqrstuvwxyz012345',
   };
   const out = spawnSync('php', [path.join(REPO, 'scripts', 'write-config.php')], { encoding: 'utf8', env });
   assert.equal(out.status, 0, out.stderr);
@@ -344,6 +345,13 @@ test('accounts settings are built with var_export and pass php -l', () => {
   assert.equal(cfg.mail_transport, 'smtp');
   assert.equal(cfg.cookie_secure, true);
   assert.equal(cfg.app_url, 'https://letsgetfit.site');
+  assert.equal(cfg.smtp_user, 'no-reply@letsgetfit.site', 'SMTP_USER defaults to MAIL_FROM');
+  assert.equal(cfg.admin_email, 'owner@example.ie');
+  assert.equal(cfg.setup_token, 'abcdefghijklmnopqrstuvwxyz012345');
+  const bad = (extra) => spawnSync('php', [path.join(REPO, 'scripts', 'write-config.php')], { encoding: 'utf8', env: { ...env, ...extra } });
+  assert.match(bad({ ADMIN_SETUP_TOKEN: 'short' }).stderr, /ADMIN_SETUP_TOKEN/);
+  assert.match(bad({ ADMIN_EMAIL: 'nope' }).stderr, /ADMIN_EMAIL/);
+  assert.match(bad({ APP_HASH_SECRET: '' }).stderr, /missing: APP_HASH_SECRET/);
   // Off by default.
   const off = spawnSync('php', [path.join(REPO, 'scripts', 'write-config.php')], { encoding: 'utf8', env: { PATH: process.env.PATH } });
   assert.match(off.stdout, /'accounts_enabled' => false/);
@@ -353,7 +361,7 @@ test('accounts settings are built with var_export and pass php -l', () => {
 test('switching accounts on with missing secrets stops before connecting', async () => {
   const r = await deploy({ FTP_SERVER: '127.0.0.1:9', FTP_USERNAME: 'u', FTP_PASSWORD: 'p', FTP_DIRECTORY: 'x', ACCOUNTS_ENABLED: 'true', DB_NAME: 'x' });
   assert.notEqual(r.status, 0);
-  assert.match(r.stderr, /missing: DB_USER DB_PASSWORD SMTP_HOST SMTP_USER SMTP_PASSWORD MAIL_FROM/);
+  assert.match(r.stderr, /missing: APP_HASH_SECRET DB_USER DB_PASSWORD SMTP_HOST SMTP_PASSWORD MAIL_FROM/);
   assert.doesNotMatch(r.stdout, /logged in/);
 });
 

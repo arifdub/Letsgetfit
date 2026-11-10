@@ -49,6 +49,10 @@ final class Config
             'cookie_name' => '__Host-lgf_session',
             'cookie_secure' => true,
             'session_days' => 30,
+            'admin_email' => '',          // whoever logs in with a code sent here becomes an admin
+            'setup_token' => '',          // one-time database setup from the admin page
+            'signups_open' => true,
+            'privacy_contact_email' => '',
 
             // ---- Phase 5: AI meal scan (off unless an OpenAI API key is set) ----
             'openai_api_key' => '',
@@ -61,6 +65,7 @@ final class Config
             'scan_per_visitor_per_10min' => 5,
             'scan_per_visitor_per_day' => 20,
             'scan_daily_limit' => 100,             // whole site, rolling 24 hours: caps spending
+            'scan_enabled' => true,                // admins can pause scanning without removing the key
         ];
         $file = $privateDir . '/config/app.php';
         $loaded = [];
@@ -78,6 +83,12 @@ final class Config
     public static function fromArray(array $values): self
     {
         return new self($values);
+    }
+
+    /** A copy with admin-managed settings applied on top (only known keys). */
+    public function withOverrides(array $overrides): self
+    {
+        return new self(array_merge($this->values, array_intersect_key($overrides, $this->values)));
     }
 
     public function string(string $key): string

@@ -23,8 +23,8 @@
 #   FDC_API_KEY      USDA FoodData Central key, written to the private settings file
 #   APP_HASH_SECRET  optional secret for hashing visitor IPs in rate limits (random if unset)
 #   OPENAI_API_KEY   switches on the AI meal scan (with OPENAI_MODEL, SCAN_DAILY_LIMIT)
-#   ACCOUNTS_ENABLED "true" to switch on optional accounts, with DB_* , SMTP_* and MAIL_FROM
-#                    (see scripts/write-config.php and docs/DATABASE.md). Off by default.
+#   ACCOUNTS_ENABLED "true" to switch on optional accounts, with APP_HASH_SECRET, DB_*, SMTP_*, MAIL_FROM,
+#                    ADMIN_EMAIL and ADMIN_SETUP_TOKEN (see scripts/write-config.php and docs/DATABASE.md). Off by default.
 #
 # Safety rules (same as scripts/deploy.sh):
 #   - Always encrypted (explicit FTPS). Plain FTP is refused, so the password never travels
@@ -100,7 +100,7 @@ if [ -n "${OPENAI_API_KEY:-}" ] || [ "${ACCOUNTS_ENABLED:-}" = "true" ]; then
   SITE_URL="${SITE_URL:-https://letsgetfit.site/}" php "$REPO_ROOT/scripts/write-config.php" >/dev/null || fail "the server settings are not valid (see the message above)."
 fi
 if [ "${ACCOUNTS_ENABLED:-}" = "true" ]; then
-  info "accounts will be switched on (ACCOUNTS_ENABLED=true). Run database migrations by hand before people use them: see docs/DATABASE.md."
+  info "accounts will be switched on (ACCOUNTS_ENABLED=true). If the database is new, open /#admin and enter ADMIN_SETUP_TOKEN to create the tables (docs/DATABASE.md)."
 fi
 if [ -n "${OPENAI_API_KEY:-}" ]; then
   info "photo scanning will be switched on (OPENAI_API_KEY is set)."

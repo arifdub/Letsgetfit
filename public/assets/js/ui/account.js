@@ -1,14 +1,15 @@
-// Optional account and sync (Settings). Only shown when the server reports accounts are enabled.
-// Anonymous, on-device use never depends on any of this.
+// The user panel (#account): optional account, email-code sign-in, password, sync and data
+// controls. Only offered when the server reports accounts are enabled. Anonymous, on-device use
+// never depends on any of this.
 
 import * as api from '../api/account.js';
 import { applyRemote, pendingChanges, previewImport, COLLECTION_LABELS } from '../lib/sync.js';
-import { $, h, toast, formatNumber } from './dom.js';
+import { $, h, toast, formatNumber, confirmAction } from './dom.js';
 
 const CONSENT_TEXT =
   'I agree that LetsGetFit stores the health and fitness information I choose to sync (such as my details, weight, food diary and workouts) in my account, so I can use it on other devices. I can download or delete it at any time.';
 
-function formField(id, label, attrs, hint) {
+export function formField(id, label, attrs, hint) {
   return h(
     'div',
     { class: 'field', dataset: { field: attrs.name } },
@@ -19,7 +20,7 @@ function formField(id, label, attrs, hint) {
   );
 }
 
-function showError(form, error, fieldIds = {}) {
+export function showError(form, error, fieldIds = {}) {
   for (const el of form.querySelectorAll('.field-error')) {
     el.hidden = true;
     el.textContent = '';
@@ -44,70 +45,148 @@ function showError(form, error, fieldIds = {}) {
   }
 }
 
-function setStatus(form, message, kind = 'info') {
+export function setStatus(form, message, kind = 'info') {
   const status = form.querySelector('.form-status');
   status.className = `form-status notice-inline${kind === 'error' ? ' notice-inline--error' : ''}`;
   status.textContent = message;
   status.focus();
 }
 
-function statusBox() {
+export function statusBox() {
   return h('p', { class: 'form-status', role: 'status', tabindex: '-1' });
 }
 
-function busy(form, on) {
+export function busy(form, on) {
   for (const b of form.querySelectorAll('button')) b.disabled = on;
 }
 
-export function initAccount(store, { onSynced } = {}) {
-  const card = $('#account-card');
-  let state = { enabled: false, user: null };
-  let view = 'login';
-  let pendingLink = null;
+export function initAccount(store, { onSynced, onState } = {}) {
+  const panel = $('#account-panel');
+  const navItem = $('#nav-account');
+  const settingsLink = $('#settings-account');
+  let state = { enabled: false, user: null, signupsOpen: true, privacyContact: null, loaded: false };
+  // Logged-out steps: 'email' → 'code' (→ 'consent' for a new account), or 'password'.
+  let step = 'email';
+  let pendingEmail = '';
+  let pendingCode = '';
   let preview = null;
   let syncing = false;
 
   async function refresh() {
-    state = await api.getAccountState();
-    card.hidden = !state.enabled;
-    if (!state.enabled) return;
+    state = { ...(await api.getAccountState()), loaded: true };
+    navItem.hidden = !state.enabled;
+    if (settingsLink) settingsLink.hidden = !state.enabled;
+    onState?.(state);
     // Never sync one person's device data into another person's account.
-    if (store.sync.linked && (!state.user || state.user.email !== store.sync.email)) {
-      if (state.user) store.setSync({ linked: false, cursor: null, lastPushAt: null });
+    if (store.sync.linked && state.user && state.user.email !== store.sync.email) {
+      store.setSync({ linked: false, cursor: null, lastPushAt: null });
     }
     render();
     if (state.user && store.sync.linked) syncNow({ quiet: true });
   }
 
-  /* ---------------- Logged out ---------------- */
+  /* ---------------- Logged out: email code or password ---------------- */
 
-  function tabs() {
-    const items = [
-      ['login', 'Log in'],
-      ['register', 'Create account'],
-      ['forgot', 'Forgot password'],
-    ];
+  function emailForm() {
+    const form = h(
+      'form',
+      { class: 'form', id: 'code-email-form', novalidate: true },
+      statusBox(),
+      formField('acc-email', 'Email', { name: 'email', type: 'email', autocomplete: 'email', required: true, value: pendingEmail }, 'We email you a 6-digit code. No password needed. New here? The same code creates your account.'),
+      h('div', { class: 'form__actions' }, h('button', { type: 'submit', class: 'button button--primary' }, 'Email me a code')),
+    );
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      busy(form, true);
+      try {
+        const res = await api.requestCode(form.elements.email.value);
+        pendingEmail = form.elements.email.value.trim();
+        step = 'code';
+        render(res.message);
+        $('#acc-code')?.focus();
+      } catch (error) {
+        showError(form, error, { email: 'acc-email' });
+      } finally {
+        busy(form, false);
+      }
+    });
+    const usePassword = h('button', { type: 'button', class: 'button button--ghost', id: 'use-password' }, 'Log in with a password instead');
+    usePassword.addEventListener('click', () => {
+      step = 'password';
+      render();
+      $('#acc-login-email')?.focus();
+    });
+    return [form, h('p', { class: 'small' }, usePassword)];
+  }
+
+  function consentField() {
     return h(
       'div',
-      { class: 'segmented tabs', role: 'group', 'aria-label': 'Account options' },
-      items.map(([id, label]) => {
-        const b = h('button', { type: 'button', class: 'tab', 'aria-pressed': String(view === id), dataset: { accountTab: id } }, label);
-        b.addEventListener('click', () => {
-          view = id;
-          render();
-          card.querySelector(`[data-account-tab="${id}"]`)?.focus();
-        });
-        return b;
-      }),
+      { class: 'field', dataset: { field: 'healthConsent' } },
+      h('label', { class: 'checkbox checkbox--top' }, h('input', { type: 'checkbox', name: 'healthConsent', id: 'acc-consent', 'aria-describedby': 'acc-consent-error' }), h('span', {}, CONSENT_TEXT)),
+      h('p', { class: 'field-error', id: 'acc-consent-error', hidden: true }),
+      h('p', { class: 'hint' }, 'Read the ', h('a', { href: 'privacy.html' }, 'privacy notice'), ' for what is stored, why, and for how long.'),
     );
   }
 
-  function loginForm() {
+  function codeForm(message) {
+    const isNew = step === 'consent';
+    const form = h(
+      'form',
+      { class: 'form', id: 'code-verify-form', novalidate: true },
+      statusBox(),
+      h('p', {}, isNew ? 'There is no account for ' : 'Enter the code we sent to ', h('strong', {}, pendingEmail), isNew ? ' yet. To create one, agree to the following:' : '.'),
+      isNew
+        ? null
+        : formField('acc-code', '6-digit code', { name: 'code', type: 'text', inputmode: 'numeric', autocomplete: 'one-time-code', pattern: '[0-9 ]*', maxlength: '7', required: true, value: pendingCode }, 'It expires after 10 minutes. Check your spam folder if it has not arrived.'),
+      isNew ? consentField() : null,
+      h('div', { class: 'form__actions' }, h('button', { type: 'submit', class: 'button button--primary' }, isNew ? 'Create my account' : 'Log in')),
+    );
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      busy(form, true);
+      const code = isNew ? pendingCode : form.elements.code.value;
+      try {
+        const res = await api.verifyCode(pendingEmail, code, isNew ? form.elements.healthConsent.checked : false);
+        step = 'email';
+        pendingCode = '';
+        toast(res.created ? 'Your account is ready. Turn on sync below to copy this device’s data.' : 'You are logged in.');
+        await refresh();
+        $('#account-title')?.focus();
+      } catch (error) {
+        if (error.code === 'consent_required') {
+          if (!isNew) {
+            pendingCode = code;
+            step = 'consent';
+            render();
+            $('#acc-consent')?.focus();
+          } else showError(form, error, { healthConsent: 'acc-consent' });
+        } else if (error.code === 'invalid_code' && isNew) {
+          step = 'code';
+          pendingCode = '';
+          render(error.message);
+        } else showError(form, error, { code: 'acc-code' });
+      } finally {
+        busy(form, false);
+      }
+    });
+    const again = h('button', { type: 'button', class: 'button button--ghost', id: 'code-start-over' }, 'Use a different email or send a new code');
+    again.addEventListener('click', () => {
+      step = 'email';
+      pendingCode = '';
+      render();
+      $('#acc-email')?.focus();
+    });
+    if (message) queueMicrotask(() => setStatus(form, message));
+    return [form, h('p', { class: 'small' }, again)];
+  }
+
+  function passwordForm() {
     const form = h(
       'form',
       { class: 'form', id: 'login-form', novalidate: true },
       statusBox(),
-      formField('acc-login-email', 'Email', { name: 'email', type: 'email', autocomplete: 'username', required: true }),
+      formField('acc-login-email', 'Email', { name: 'email', type: 'email', autocomplete: 'username', required: true, value: pendingEmail }),
       formField('acc-login-password', 'Password', { name: 'password', type: 'password', autocomplete: 'current-password', required: true }),
       h('div', { class: 'form__actions' }, h('button', { type: 'submit', class: 'button button--primary' }, 'Log in')),
     );
@@ -116,108 +195,25 @@ export function initAccount(store, { onSynced } = {}) {
       busy(form, true);
       try {
         await api.login(form.elements.email.value, form.elements.password.value);
+        step = 'email';
         toast('You are logged in.');
         await refresh();
         $('#account-title')?.focus();
-      } catch (error) {
-        if (error.code === 'email_not_verified') {
-          showError(form, error);
-          const resend = h('button', { type: 'button', class: 'button button--small', id: 'resend-verification' }, 'Send a new confirmation link');
-          resend.addEventListener('click', async () => {
-            await api.resendVerification(form.elements.email.value).catch(() => {});
-            setStatus(form, 'If that address has an unconfirmed account, we have sent a new link.');
-          });
-          form.querySelector('.form-status').append(' ', resend);
-        } else showError(form, error);
-      } finally {
-        busy(form, false);
-      }
-    });
-    return form;
-  }
-
-  function registerForm() {
-    const form = h(
-      'form',
-      { class: 'form', id: 'register-form', novalidate: true },
-      statusBox(),
-      formField('acc-reg-email', 'Email', { name: 'email', type: 'email', autocomplete: 'email', required: true }),
-      formField('acc-reg-password', 'Password', { name: 'password', type: 'password', autocomplete: 'new-password', required: true, minlength: '12' }, 'At least 12 characters. A few unrelated words work well.'),
-      h(
-        'div',
-        { class: 'field', dataset: { field: 'healthConsent' } },
-        h('label', { class: 'checkbox checkbox--top' }, h('input', { type: 'checkbox', name: 'healthConsent', id: 'acc-reg-consent', 'aria-describedby': 'acc-reg-consent-error' }), h('span', {}, CONSENT_TEXT)),
-        h('p', { class: 'field-error', id: 'acc-reg-consent-error', hidden: true }),
-        h('p', { class: 'hint' }, 'Read the ', h('a', { href: 'privacy.html' }, 'privacy notice'), ' for what is stored, why, and for how long.'),
-      ),
-      h('div', { class: 'form__actions' }, h('button', { type: 'submit', class: 'button button--primary' }, 'Create account')),
-    );
-    form.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      busy(form, true);
-      try {
-        const res = await api.register(form.elements.email.value, form.elements.password.value, form.elements.healthConsent.checked);
-        form.reset();
-        setStatus(form, res.message);
-      } catch (error) {
-        showError(form, error, { email: 'acc-reg-email', password: 'acc-reg-password', healthConsent: 'acc-reg-consent' });
-      } finally {
-        busy(form, false);
-      }
-    });
-    return form;
-  }
-
-  function forgotForm() {
-    const form = h(
-      'form',
-      { class: 'form', id: 'forgot-form', novalidate: true },
-      statusBox(),
-      formField('acc-forgot-email', 'Email', { name: 'email', type: 'email', autocomplete: 'email', required: true }),
-      h('div', { class: 'form__actions' }, h('button', { type: 'submit', class: 'button button--primary' }, 'Email me a reset link')),
-    );
-    form.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      busy(form, true);
-      try {
-        const res = await api.requestReset(form.elements.email.value);
-        setStatus(form, res.message);
       } catch (error) {
         showError(form, error);
       } finally {
         busy(form, false);
       }
     });
-    return form;
-  }
-
-  function resetForm(token) {
-    const form = h(
-      'form',
-      { class: 'form', id: 'reset-form', novalidate: true },
-      statusBox(),
-      formField('acc-reset-password', 'New password', { name: 'password', type: 'password', autocomplete: 'new-password', required: true, minlength: '12' }, 'At least 12 characters.'),
-      h('div', { class: 'form__actions' }, h('button', { type: 'submit', class: 'button button--primary' }, 'Save new password')),
-    );
-    form.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      busy(form, true);
-      try {
-        const res = await api.resetPassword(token, form.elements.password.value);
-        pendingLink = null;
-        view = 'login';
-        render();
-        toast(res.message);
-      } catch (error) {
-        showError(form, error, { password: 'acc-reset-password' });
-      } finally {
-        busy(form, false);
-      }
+    const useCode = h('button', { type: 'button', class: 'button button--ghost', id: 'use-code' }, 'Forgotten it, or no password? Email me a code');
+    useCode.addEventListener('click', () => {
+      pendingEmail = form.elements.email.value.trim();
+      step = 'email';
+      render();
+      $('#acc-email')?.focus();
     });
-    return form;
+    return [form, h('p', { class: 'small' }, useCode)];
   }
-
-  /* ---------------- Logged in ---------------- */
 
   function linkedSection() {
     const s = store.sync;
@@ -332,7 +328,107 @@ export function initAccount(store, { onSynced } = {}) {
     }
   }
 
-  function accountActions() {
+  /* ---------------- Logged in: profile, password, data ---------------- */
+
+  const when = (iso) => (iso ? new Date(`${String(iso).replace(' ', 'T')}Z`).toLocaleString('en-IE', { dateStyle: 'medium', timeStyle: 'short' }) : 'Never');
+
+  function profileSection() {
+    const u = state.user;
+    return h(
+      'section',
+      { class: 'card', 'aria-labelledby': 'acc-profile-title' },
+      h('h2', { id: 'acc-profile-title' }, 'Your account'),
+      h(
+        'dl',
+        { class: 'stats', id: 'account-email' },
+        h('dt', {}, 'Email'),
+        h('dd', {}, u.email),
+        h('dt', {}, 'Account type'),
+        h('dd', {}, u.role === 'admin' ? 'Admin' : 'Member'),
+        h('dt', {}, 'Logs in with'),
+        h('dd', { id: 'acc-login-method' }, u.hasPassword ? 'Password or email code' : 'Email code'),
+        h('dt', {}, 'Joined'),
+        h('dd', {}, when(u.createdAt)),
+      ),
+      u.role === 'admin' ? h('p', {}, h('a', { href: '#admin', class: 'button', id: 'open-admin' }, 'Open the admin panel')) : null,
+    );
+  }
+
+  function passwordSection() {
+    const u = state.user;
+    const needsCurrent = u.hasPassword && !u.canSetPasswordWithoutCurrent;
+    const form = h(
+      'form',
+      { class: 'form', id: 'set-password-form', novalidate: true },
+      statusBox(),
+      h('p', { class: 'muted' }, u.hasPassword ? 'Change your password, or remove it and log in with email codes only.' : 'Add a password to log in without waiting for a code. You can still use codes at any time.'),
+      needsCurrent ? formField('acc-current-password', 'Current password', { name: 'currentPassword', type: 'password', autocomplete: 'current-password', required: true }, 'Forgotten it? Log out, log in with an email code, and come back here within 15 minutes.') : null,
+      formField('acc-new-password', u.hasPassword ? 'New password' : 'Password', { name: 'password', type: 'password', autocomplete: 'new-password', required: true, minlength: '12' }, 'At least 12 characters. A few unrelated words work well.'),
+      h(
+        'div',
+        { class: 'form__actions' },
+        h('button', { type: 'submit', class: 'button button--primary' }, u.hasPassword ? 'Change password' : 'Save password'),
+        u.hasPassword ? h('button', { type: 'button', class: 'button button--ghost', id: 'remove-password' }, 'Remove password') : null,
+      ),
+    );
+    const fields = { password: 'acc-new-password', currentPassword: 'acc-current-password' };
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      busy(form, true);
+      try {
+        const res = await api.setPassword(form.elements.password.value, form.elements.currentPassword?.value ?? '');
+        toast(res.message);
+        await refresh();
+        $('#acc-password-title')?.focus();
+      } catch (error) {
+        showError(form, error, fields);
+      } finally {
+        busy(form, false);
+      }
+    });
+    form.querySelector('#remove-password')?.addEventListener('click', async () => {
+      if (!(await confirmAction({ title: 'Remove your password?', body: 'You will log in with a code sent to your email instead. Other devices will be logged out.', confirmLabel: 'Remove password' }))) return;
+      busy(form, true);
+      try {
+        const res = await api.removePassword(form.elements.currentPassword?.value ?? '');
+        toast(res.message);
+        await refresh();
+      } catch (error) {
+        showError(form, error, fields);
+      } finally {
+        busy(form, false);
+      }
+    });
+    const everywhere = h('button', { type: 'button', class: 'button', id: 'logout-everywhere' }, 'Log out on every device');
+    everywhere.addEventListener('click', async () => {
+      if (!(await confirmAction({ title: 'Log out everywhere?', body: 'Every device, including this one, will be logged out of your account. Data saved on each device stays there.', confirmLabel: 'Log out everywhere' }))) return;
+      try {
+        const res = await api.logoutEverywhere();
+        unlink();
+        toast(res.message);
+        await refresh();
+      } catch (error) {
+        toast(error.message, 'error');
+      }
+    });
+    return h(
+      'section',
+      { class: 'card', 'aria-labelledby': 'acc-password-title' },
+      h('h2', { id: 'acc-password-title', tabindex: '-1' }, 'Login and security'),
+      form,
+      h('h3', {}, 'Devices'),
+      h('p', { class: 'muted' }, 'Lost a phone, or used a shared computer? Log out everywhere at once.'),
+      h('div', { class: 'form__actions' }, everywhere),
+    );
+  }
+
+  function unlink() {
+    store.setSync({ linked: false, cursor: null, lastPushAt: null });
+    store.clearTombstones(null);
+    preview = null;
+  }
+
+  function dataSection() {
     const exportButton = h('button', { type: 'button', class: 'button', id: 'account-export' }, 'Download account data (JSON)');
     exportButton.addEventListener('click', async () => {
       try {
@@ -356,25 +452,27 @@ export function initAccount(store, { onSynced } = {}) {
       } catch {
         /* still log out locally */
       }
-      store.setSync({ linked: false, cursor: null, lastPushAt: null });
-      store.clearTombstones(null);
-      preview = null;
+      unlink();
       toast('Logged out. Your data stays on this device.');
       await refresh();
     });
+    const u = state.user;
     const deleteForm = h(
       'form',
       { class: 'form', id: 'delete-account-form', novalidate: true },
       statusBox(),
       h('p', {}, 'This permanently deletes your account and everything stored in it. Data on this device is not changed.'),
-      formField('acc-delete-password', 'Your password', { name: 'password', type: 'password', autocomplete: 'current-password', required: true }),
+      u.hasPassword
+        ? formField('acc-delete-password', 'Your password', { name: 'password', type: 'password', autocomplete: 'current-password', required: true })
+        : h('p', { class: 'muted' }, 'If you logged in more than 15 minutes ago, log out and log in with a new code first.'),
       h('div', { class: 'form__actions' }, h('button', { type: 'submit', class: 'button button--danger' }, 'Delete my account')),
     );
     deleteForm.addEventListener('submit', async (e) => {
       e.preventDefault();
+      if (!(await confirmAction({ title: 'Delete your account?', body: 'Your account and all data stored in it will be deleted for good. Data on this device stays.', confirmLabel: 'Delete account' }))) return;
       busy(deleteForm, true);
       try {
-        const res = await api.deleteAccount(deleteForm.elements.password.value);
+        const res = await api.deleteAccount(deleteForm.elements.password?.value ?? '');
         store.setSync({ linked: false, email: null, cursor: null, lastPushAt: null, lastSyncAt: null });
         store.clearTombstones(null);
         toast(res.message);
@@ -385,61 +483,51 @@ export function initAccount(store, { onSynced } = {}) {
         busy(deleteForm, false);
       }
     });
-    return [
+    return h(
+      'section',
+      { class: 'card', 'aria-labelledby': 'acc-data-title' },
+      h('h2', { id: 'acc-data-title' }, 'Your data'),
+      h('p', { class: 'muted' }, 'Download everything stored in your account, or delete it. ', state.privacyContact ? ['Questions about your data: ', h('a', { href: `mailto:${state.privacyContact}` }, state.privacyContact), '.'] : null),
       h('div', { class: 'form__actions' }, exportButton, logoutButton),
       h('details', { class: 'disclosure' }, h('summary', {}, 'Delete account'), deleteForm),
-    ];
+    );
   }
 
   /* ---------------- Render ---------------- */
 
-  function render() {
-    if (!state.enabled) return;
-    const head = [
-      h('h2', { id: 'account-title', tabindex: '-1' }, 'Account and sync (optional)'),
-      h('p', { class: 'muted small' }, 'You do not need an account. With one, you can keep your logs on more than one device. Data is copied to our server only from devices where you turn on sync. ', h('a', { href: 'privacy.html' }, 'Privacy notice'), '.'),
-    ];
-    let body;
-    if (pendingLink?.type === 'reset') {
-      body = [h('h3', {}, 'Choose a new password'), resetForm(pendingLink.token)];
-    } else if (!state.user) {
-      body = [tabs(), view === 'register' ? registerForm() : view === 'forgot' ? forgotForm() : loginForm()];
-    } else {
-      body = [
-        h('p', { id: 'account-email' }, 'Logged in as ', h('strong', {}, state.user.email), '.'),
-        store.sync.linked ? linkedSection() : previewSection(),
-        ...accountActions(),
-      ];
+  function render(message) {
+    if (!state.loaded) return;
+    if (!state.enabled) {
+      panel.replaceChildren(h('div', { class: 'card' }, h('p', { class: 'state__title' }, 'Accounts are not available'), h('p', {}, 'You do not need an account: everything works and is saved on this device.')));
+      return;
     }
-    card.replaceChildren(...head, ...body);
+    const intro = h('p', { class: 'muted' }, 'You do not need an account. With one, you can keep your logs on more than one device. Data is copied to our server only from devices where you turn on sync. ', h('a', { href: 'privacy.html' }, 'Privacy notice'), '.');
+    if (!state.user) {
+      let body;
+      if (step === 'code' || step === 'consent') body = codeForm(message);
+      else if (step === 'password') body = passwordForm();
+      else body = emailForm();
+      panel.replaceChildren(
+        h(
+          'section',
+          { class: 'card', id: 'account-card', 'aria-labelledby': 'account-title' },
+          h('h2', { id: 'account-title', tabindex: '-1' }, step === 'password' ? 'Log in with a password' : 'Join or log in'),
+          intro,
+          state.signupsOpen ? null : h('p', { class: 'notice-inline' }, 'New accounts are paused at the moment. Existing members can still log in.'),
+          ...body,
+        ),
+      );
+      return;
+    }
+    panel.replaceChildren(
+      profileSection(),
+      h('section', { class: 'card', id: 'account-card', 'aria-labelledby': 'account-title' }, h('h2', { id: 'account-title', tabindex: '-1' }, 'Sync this device'), intro, store.sync.linked ? linkedSection() : previewSection()),
+      passwordSection(),
+      dataSection(),
+    );
   }
 
-  /** Handles #account/verify?token=… and #account/reset?token=… links from emails. */
-  async function handleLink(hash) {
-    const match = /^#account\/(verify|reset)\?token=([A-Za-z0-9_-]{20,100})$/.exec(hash);
-    // Remove the token from the address bar and history straight away.
-    history.replaceState(null, '', '#settings');
-    if (!match) return;
-    await ready;
-    if (!state.enabled) return;
-    const [, type, token] = match;
-    if (type === 'verify') {
-      try {
-        const res = await api.verifyEmail(token);
-        view = 'login';
-        render();
-        toast(res.message);
-      } catch (error) {
-        toast(error.message, 'error');
-      }
-    } else {
-      pendingLink = { type: 'reset', token };
-      render();
-      $('#acc-reset-password')?.focus();
-    }
-    card.scrollIntoView({ block: 'start' });
-  }
-
+  panel.replaceChildren(h('div', { class: 'state state--loading', role: 'status' }, 'Checking your account…'));
   const ready = refresh();
-  return { handleLink, refresh, syncNow };
+  return { ready, refresh, syncNow, get state() { return state; } };
 }

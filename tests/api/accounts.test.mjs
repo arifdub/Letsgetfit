@@ -11,6 +11,7 @@ import path from 'node:path';
 import net from 'node:net';
 import { fileURLToPath } from 'node:url';
 
+const SETUP_TOKEN = 'test-setup-token-abcdefghijklmnop';
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const DB = {
   host: process.env.LGF_TEST_DB_HOST ?? '127.0.0.1',
@@ -44,7 +45,7 @@ function phpArray(obj) {
   return r.stdout;
 }
 
-async function setup({ enabled = true } = {}) {
+async function setup({ enabled = true, migrate: runMigrations = true, extra = {} } = {}) {
   const base = mkdtempSync(path.join(tmpdir(), 'lgf-acc-'));
   const priv = path.join(base, 'letsgetfit-private');
   mkdirSync(path.join(priv, 'config'), { recursive: true });
@@ -65,9 +66,12 @@ async function setup({ enabled = true } = {}) {
       cookie_name: 'lgf_session',
       cookie_secure: false,
       hash_secret: 'test-secret-for-hashing',
+      admin_email: 'boss@example.ie',
+      setup_token: SETUP_TOKEN,
+      ...extra,
     })};`,
   );
-  const migrate = spawnSync('php', [path.join(priv, 'app', 'bin', 'migrate.php')], { encoding: 'utf8', env: { ...process.env, LETSGETFIT_PRIVATE_DIR: priv } });
+  const migrate = !runMigrations ? null : spawnSync('php', [path.join(priv, 'app', 'bin', 'migrate.php')], { encoding: 'utf8', env: { ...process.env, LETSGETFIT_PRIVATE_DIR: priv } });
   const proc = spawn('php', ['-S', `127.0.0.1:${port}`, '-t', path.join(REPO, 'public')], {
     env: { ...process.env, LETSGETFIT_PRIVATE_DIR: priv, PHP_CLI_SERVER_WORKERS: '4' },
     stdio: 'ignore',
@@ -111,14 +115,14 @@ class Client {
     this.csrf = '';
     this.lastSetCookie = [];
   }
-  async call(action, { method = 'GET', body, query = '', headers = {}, csrf = true } = {}) {
+  async call(action, { method = 'GET', body, query = '', headers = {}, csrf = true, endpoint = 'account' } = {}) {
     const h = { Accept: 'application/json', ...headers };
     if (this.cookies.size) h.Cookie = [...this.cookies].map(([k, v]) => `${k}=${v}`).join('; ');
     if (method === 'POST') {
       h['Content-Type'] ??= 'application/json';
       if (csrf) h['X-CSRF-Token'] = this.csrf;
     }
-    const res = await fetch(`${this.base}/api/account.php?action=${action}${query}`, { method, headers: h, body: body === undefined ? undefined : typeof body === 'string' ? body : JSON.stringify(body) });
+    const res = await fetch(`${this.base}/api/${endpoint}.php?action=${action}${query}`, { method, headers: h, body: body === undefined ? undefined : typeof body === 'string' ? body : JSON.stringify(body) });
     this.lastSetCookie = res.headers.getSetCookie();
     for (const c of this.lastSetCookie) {
       const [pair] = c.split(';');
@@ -136,20 +140,23 @@ class Client {
   post(action, body, opts = {}) {
     return this.call(action, { method: 'POST', body, ...opts });
   }
+  admin(action, body, opts = {}) {
+    return this.call(action, { endpoint: 'admin', ...(body === undefined ? {} : { method: 'POST', body }), ...opts });
+  }
 }
 
 const PASSWORD = 'correct horse battery staple';
-const tokenFrom = (mail) => /token=([A-Za-z0-9_-]+)/.exec(mail.text)[1];
+const codeFrom = (mail) => /\b(\d{6})\b/.exec(mail.text)[1];
+const lastMail = (s, email) => s.outbox().filter((m) => m.to === email).pop();
 
-async function verifiedUser(s, email, password = PASSWORD) {
-  const c = new Client(s.url);
-  await c.me();
-  const r = await c.post('register', { email, password, healthConsent: true });
+/** Join or log in with an email code, the way the app does. */
+async function codeLogin(s, email, { consent = true, client } = {}) {
+  const c = client ?? new Client(s.url);
+  if (!c.csrf) await c.me();
+  const r = await c.post('request-code', { email });
   assert.equal(r.status, 200, JSON.stringify(r.body));
-  const mail = s.outbox().filter((m) => m.to === email).pop();
-  assert.equal((await c.post('verify', { token: tokenFrom(mail) })).status, 200);
-  const login = await c.post('login', { email, password });
-  assert.equal(login.status, 200, JSON.stringify(login.body));
+  const v = await c.post('verify-code', { email, code: codeFrom(lastMail(s, email.trim().toLowerCase())), healthConsent: consent });
+  assert.equal(v.status, 200, JSON.stringify(v.body));
   return c;
 }
 
@@ -164,7 +171,8 @@ test('accounts are off by default and the health check says so', { skip }, async
   // Nothing else is reachable while disabled.
   const c = new Client(s.url);
   assert.equal((await c.call('pull')).body.enabled, false);
-  assert.equal((await c.post('register', { email: 'a@example.ie', password: 'correct horse battery staple', healthConsent: true })).body.enabled, false);
+  assert.equal((await c.post('request-code', { email: 'a@example.ie' })).body.enabled, false);
+  assert.equal((await c.admin('status')).body.enabled, false);
   const health = await (await fetch(`${s.url}/api/health.php`)).json();
   assert.equal(health.accounts, 'disabled');
   assert.equal(health.pdoMysql, true);
@@ -174,55 +182,139 @@ test('migrations apply once and report status', { skip }, async (t) => {
   const s = await setup();
   t.after(() => s.stop());
   assert.equal(s.migrate.status, 0, s.migrate.stderr);
-  assert.match(s.migrate.stdout, /Applied: 001_accounts/);
+  assert.match(s.migrate.stdout, /Applied: 001_accounts, 002_passwordless_admin/);
   const run = (args) => spawnSync('php', [path.join(s.priv, 'app', 'bin', 'migrate.php'), ...args], { encoding: 'utf8', env: { ...process.env, LETSGETFIT_PRIVATE_DIR: s.priv } });
   assert.match(run([]).stdout, /Nothing to do/);
-  assert.match(run(['--status']).stdout, /Applied: 001_accounts\nPending: none/);
+  assert.match(run(['--status']).stdout, /Applied: 001_accounts, 002_passwordless_admin\nPending: none/);
   const tables = JSON.parse(sql('SHOW TABLES', s.dbName).stdout).map((r) => Object.values(r)[0]).sort();
-  assert.deepEqual(tables, ['auth_tokens', 'records', 'schema_migrations', 'users']);
+  assert.deepEqual(tables, ['audit_log', 'login_codes', 'records', 'schema_migrations', 'settings', 'users']);
   // The migration CLI cannot be run from the web.
   assert.equal((await fetch(`${s.url}/../letsgetfit-private/app/bin/migrate.php`)).status, 404);
 });
 
-test('register, confirm email, log in; secure cookie flags; no secrets in responses', { skip }, async (t) => {
+test('database setup from the admin page needs the setup token, then accounts work', { skip }, async (t) => {
+  const s = await setup({ migrate: false });
+  t.after(() => s.stop());
+  const c = new Client(s.url);
+  // Before setup, the app just sees accounts as unavailable.
+  const me = await c.me();
+  assert.deepEqual([me.status, me.body.enabled, me.body.setupRequired], [200, false, true]);
+  const status = await c.admin('status');
+  assert.equal(status.body.needsSetup, true);
+  assert.deepEqual(status.body.pending, ['001_accounts', '002_passwordless_admin']);
+  assert.equal(status.body.setupTokenConfigured, true);
+  assert.equal((await c.admin('overview')).body.error, 'setup_required');
+  const wrong = await c.admin('setup', { setupToken: 'x'.repeat(30) });
+  assert.deepEqual([wrong.status, wrong.body.error], [403, 'bad_setup_token']);
+  assert.equal((await c.admin('setup', { setupToken: SETUP_TOKEN }, { csrf: false })).body.error, 'csrf');
+  const ok = await c.admin('setup', { setupToken: SETUP_TOKEN });
+  assert.equal(ok.status, 200, JSON.stringify(ok.body));
+  assert.deepEqual(ok.body.applied, ['001_accounts', '002_passwordless_admin']);
+  assert.equal((await c.admin('setup', { setupToken: SETUP_TOKEN })).body.applied.length, 0, 'runs once');
+  assert.equal((await c.admin('status')).body.needsSetup, false);
+  assert.equal((await c.me()).body.enabled, true);
+  // Setup attempts are rate-limited.
+  const other = new Client(s.url);
+  await other.admin('status');
+  let last;
+  for (let i = 0; i < 6; i += 1) last = await other.admin('setup', { setupToken: 'nope' });
+  assert.equal(last.status, 429);
+});
+
+test('a short setup token is refused', { skip }, async (t) => {
+  const s = await setup({ migrate: false, extra: { setup_token: 'short' } });
+  t.after(() => s.stop());
+  const c = new Client(s.url);
+  assert.equal((await c.admin('status')).body.setupTokenConfigured, false);
+  const r = await c.admin('setup', { setupToken: 'short' });
+  assert.equal(r.status, 403);
+  assert.match(r.body.message, /ADMIN_SETUP_TOKEN/);
+});
+
+test('join with an email code: consent, secure cookie, single-use hashed codes', { skip }, async (t) => {
   const s = await setup();
   t.after(() => s.stop());
   const c = new Client(s.url);
   const me0 = await c.me();
   assert.equal(me0.body.enabled, true);
   assert.equal(me0.body.user, null);
+  assert.equal(me0.body.signupsOpen, true);
   assert.match(me0.body.csrfToken, /^[0-9a-f]{64}$/);
   const cookie = c.lastSetCookie.join(';');
   assert.match(cookie, /HttpOnly/i);
   assert.match(cookie, /SameSite=Lax/i);
 
-  const reg = await c.post('register', { email: '  Aoife@Example.ie ', password: PASSWORD, healthConsent: true });
-  assert.equal(reg.status, 200);
-  assert.match(reg.body.message, /Check your email/);
-  const [mail] = s.outbox();
-  assert.equal(mail.to, 'aoife@example.ie');
-  assert.match(mail.text, new RegExp(`${s.url}/#account/verify\\?token=`));
+  const req = await c.post('request-code', { email: '  Aoife@Example.ie ' });
+  assert.equal(req.status, 200);
+  assert.match(req.body.message, /6-digit code/);
+  const mail = lastMail(s, 'aoife@example.ie');
+  assert.match(mail.subject, /Your LetsGetFit code: \d{6}/);
+  assert.match(mail.text, /create your LetsGetFit account/);
+  const code = codeFrom(mail);
+  const stored = JSON.parse(sql('SELECT email_hash, code_hash FROM login_codes', s.dbName).stdout);
+  assert.equal(stored.length, 1);
+  assert.ok(/^[0-9a-f]{64}$/.test(stored[0].code_hash) && !JSON.stringify(stored).includes(code) && !JSON.stringify(stored).includes('aoife'), 'only hashes stored');
 
-  const early = await c.post('login', { email: 'aoife@example.ie', password: PASSWORD });
-  assert.equal(early.status, 403);
-  assert.equal(early.body.error, 'email_not_verified');
-
-  assert.equal((await c.post('verify', { token: tokenFrom(mail) })).status, 200);
-  assert.equal((await c.post('verify', { token: tokenFrom(mail) })).status, 400, 'single use');
-
+  // A new account needs consent first; the code is not used up by asking.
+  const noConsent = await c.post('verify-code', { email: 'aoife@example.ie', code });
+  assert.deepEqual([noConsent.status, noConsent.body.error], [409, 'consent_required']);
+  assert.equal(JSON.parse(sql('SELECT COUNT(*) AS n FROM users', s.dbName).stdout)[0].n, 0, 'nothing stored without consent');
   const before = c.cookies.get('lgf_session');
-  const login = await c.post('login', { email: 'AOIFE@example.ie', password: PASSWORD });
-  assert.equal(login.status, 200);
+  const ok = await c.post('verify-code', { email: 'AOIFE@example.ie', code: ` ${code.slice(0, 3)} ${code.slice(3)} `, healthConsent: true });
+  assert.equal(ok.status, 200, JSON.stringify(ok.body));
+  assert.equal(ok.body.created, true);
   assert.notEqual(c.cookies.get('lgf_session'), before, 'session ID changes on login');
   const me = await c.me();
-  assert.deepEqual({ email: me.body.user.email, verified: me.body.user.verified }, { email: 'aoife@example.ie', verified: true });
-
-  const row = JSON.parse(sql("SELECT password_hash, health_consent_at FROM users", s.dbName).stdout)[0];
-  assert.match(row.password_hash, /^\$argon2id\$|^\$2y\$/);
-  assert.ok(row.health_consent_at);
-  const tokens = JSON.parse(sql('SELECT token_hash FROM auth_tokens', s.dbName).stdout);
-  assert.ok(tokens.every((r) => /^[0-9a-f]{64}$/.test(r.token_hash)), 'only token hashes are stored');
+  assert.deepEqual(
+    { email: me.body.user.email, role: me.body.user.role, hasPassword: me.body.user.hasPassword, recent: me.body.user.canSetPasswordWithoutCurrent },
+    { email: 'aoife@example.ie', role: 'user', hasPassword: false, recent: true },
+  );
   assert.ok(!JSON.stringify(me.body).includes('hash'));
+  const row = JSON.parse(sql('SELECT password_hash, health_consent_at, email_verified_at FROM users', s.dbName).stdout)[0];
+  assert.equal(row.password_hash, null);
+  assert.ok(row.health_consent_at && row.email_verified_at);
+  // Single use.
+  const fresh = new Client(s.url);
+  await fresh.me();
+  assert.equal((await fresh.post('verify-code', { email: 'aoife@example.ie', code })).body.error, 'invalid_code');
+  // Logging in again later does not need consent again.
+  const again = await codeLogin(s, 'aoife@example.ie', { consent: false });
+  assert.equal((await again.me()).body.user.email, 'aoife@example.ie');
+});
+
+test('codes: wrong guesses are limited, a new code replaces the old, unknown emails look the same', { skip }, async (t) => {
+  const s = await setup();
+  t.after(() => s.stop());
+  await codeLogin(s, 'cian@example.ie');
+  const c = new Client(s.url);
+  await c.me();
+  const known = await c.post('request-code', { email: 'cian@example.ie' });
+  const unknown = await c.post('request-code', { email: 'nobody@example.ie' });
+  assert.equal(known.status, unknown.status);
+  assert.equal(known.body.message.replace('cian', 'X'), unknown.body.message.replace('nobody', 'X'));
+  const code = codeFrom(lastMail(s, 'cian@example.ie'));
+  const wrong = code === '000000' ? '111111' : '000000';
+  for (let i = 0; i < 5; i += 1) {
+    const r = await c.post('verify-code', { email: 'cian@example.ie', code: wrong });
+    assert.deepEqual([r.status, r.body.error], [401, 'invalid_code']);
+  }
+  assert.equal((await c.post('verify-code', { email: 'cian@example.ie', code })).body.error, 'invalid_code', 'locked after 5 wrong guesses');
+  await c.post('request-code', { email: 'cian@example.ie' });
+  const second = codeFrom(lastMail(s, 'cian@example.ie'));
+  assert.equal((await c.post('verify-code', { email: 'cian@example.ie', code: second })).status, 200);
+  assert.equal((await c.post('request-code', { email: 'not-an-email' })).body.error, 'invalid_email');
+  // Expired codes do not work.
+  const d = new Client(s.url);
+  await d.me();
+  await d.post('request-code', { email: 'cian@example.ie' });
+  sql('UPDATE login_codes SET expires_at = UTC_TIMESTAMP() - INTERVAL 1 MINUTE', s.dbName);
+  assert.equal((await d.post('verify-code', { email: 'cian@example.ie', code: codeFrom(lastMail(s, 'cian@example.ie')) })).body.error, 'invalid_code');
+  // At most 5 emails an hour to one address.
+  const e = new Client(s.url);
+  await e.me();
+  const sentBefore = s.outbox().filter((m) => m.to === 'flood@example.ie').length;
+  for (let i = 0; i < 7; i += 1) assert.equal((await e.post('request-code', { email: 'flood@example.ie' })).status, 200);
+  assert.equal(s.outbox().filter((m) => m.to === 'flood@example.ie').length - sentBefore, 5);
 });
 
 test('CSRF token, JSON content type and same origin are required for changes', { skip }, async (t) => {
@@ -230,45 +322,71 @@ test('CSRF token, JSON content type and same origin are required for changes', {
   t.after(() => s.stop());
   const c = new Client(s.url);
   await c.me();
-  const body = { email: 'x@example.ie', password: PASSWORD, healthConsent: true };
-  assert.equal((await c.post('register', body, { csrf: false })).body.error, 'csrf');
-  assert.equal((await c.post('register', body, { headers: { 'X-CSRF-Token': 'f'.repeat(64) }, csrf: false })).body.error, 'csrf');
-  assert.equal((await c.post('register', JSON.stringify(body), { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } })).status, 415);
-  assert.equal((await c.post('register', body, { headers: { Origin: 'https://evil.example' } })).body.error, 'bad_origin');
-  assert.equal((await c.post('register', body, { headers: { Origin: s.url } })).status, 200);
+  const body = { email: 'x@example.ie' };
+  assert.equal((await c.post('request-code', body, { csrf: false })).body.error, 'csrf');
+  assert.equal((await c.post('request-code', body, { headers: { 'X-CSRF-Token': 'f'.repeat(64) }, csrf: false })).body.error, 'csrf');
+  assert.equal((await c.post('request-code', JSON.stringify(body), { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } })).status, 415);
+  assert.equal((await c.post('request-code', body, { headers: { Origin: 'https://evil.example' } })).body.error, 'bad_origin');
+  assert.equal((await c.post('request-code', body, { headers: { Origin: s.url } })).status, 200);
   assert.equal(s.outbox().length, 1);
 });
 
-test('registration does not reveal existing accounts; validation messages', { skip }, async (t) => {
+test('optional password: set after a code login, log in with it, change it, remove it', { skip }, async (t) => {
   const s = await setup();
   t.after(() => s.stop());
-  await verifiedUser(s, 'niamh@example.ie');
+  const phone = await codeLogin(s, 'orla@example.ie');
+  const laptop = await codeLogin(s, 'orla@example.ie');
+  assert.equal((await phone.post('set-password', { password: 'short' })).body.error, 'weak_password');
+  const set = await phone.post('set-password', { password: PASSWORD });
+  assert.equal(set.status, 200, JSON.stringify(set.body));
+  assert.equal((await phone.me()).body.user.hasPassword, true, 'this device stays logged in');
+  assert.equal((await laptop.me()).body.user, null, 'other devices are logged out');
+  assert.ok(s.outbox().some((m) => m.to === 'orla@example.ie' && /password .* was just set or changed/.test(m.text)), 'security email sent');
+  const hash = JSON.parse(sql('SELECT password_hash FROM users', s.dbName).stdout)[0].password_hash;
+  assert.match(hash, /^\$argon2id\$|^\$2y\$/);
+
+  // Password login (generic errors).
   const c = new Client(s.url);
   await c.me();
-  const again = await c.post('register', { email: 'niamh@example.ie', password: 'another long passphrase', healthConsent: true });
-  assert.equal(again.status, 200);
-  assert.match(again.body.message, /Check your email/);
-  assert.ok(s.outbox().some((m) => m.to === 'niamh@example.ie' && /you already have one/.test(m.text)), 'existing-account email sent');
-  assert.equal(JSON.parse(sql('SELECT COUNT(*) AS n FROM users', s.dbName).stdout)[0].n, 1);
-  assert.equal((await c.post('register', { email: 'not-an-email', password: PASSWORD, healthConsent: true })).body.error, 'invalid_email');
-  assert.equal((await c.post('register', { email: 'a@example.ie', password: 'short', healthConsent: true })).body.error, 'weak_password');
-  assert.equal((await c.post('register', { email: 'a@example.ie', password: 'aaaaaaaaaaaaaa', healthConsent: true })).body.error, 'weak_password');
-  assert.equal((await c.post('register', { email: 'a@example.ie', password: PASSWORD })).body.error, 'consent_required');
+  const wrong = await c.post('login', { email: 'orla@example.ie', password: 'wrong password here' });
+  const unknown = await c.post('login', { email: 'nobody@example.ie', password: 'wrong password here' });
+  assert.deepEqual([wrong.status, unknown.status], [401, 401]);
+  assert.equal(wrong.body.message, unknown.body.message);
+  assert.equal((await c.post('login', { email: 'ORLA@example.ie', password: PASSWORD })).status, 200);
+  const me = await c.me();
+  assert.equal(me.body.user.canSetPasswordWithoutCurrent, false);
+  // After a password login, changing it needs the current one.
+  assert.equal((await c.post('set-password', { password: 'a brand new long passphrase', currentPassword: 'wrong' })).body.error, 'invalid_credentials');
+  assert.equal((await c.post('set-password', { password: 'a brand new long passphrase', currentPassword: PASSWORD })).status, 200);
+  assert.equal((await c.post('login', { email: 'orla@example.ie', password: 'a brand new long passphrase' })).status, 200);
+  // Forgotten password: log in with a code, then set a new one without the old.
+  const forgot = await codeLogin(s, 'orla@example.ie');
+  assert.equal((await forgot.post('set-password', { password: 'third long passphrase here' })).status, 200);
+  // Remove it: back to codes only.
+  assert.equal((await forgot.post('set-password', { remove: true })).status, 200);
+  assert.equal((await forgot.me()).body.user.hasPassword, false);
+  assert.equal((await new Client(s.url).me().then(() => 0)), 0);
+  const d = new Client(s.url);
+  await d.me();
+  assert.equal((await d.post('login', { email: 'orla@example.ie', password: 'third long passphrase here' })).status, 401);
+  // An account without a password, logged in a while ago, must log in again to add one.
+  sql("UPDATE users SET password_hash = NULL", s.dbName);
+  const old = await codeLogin(s, 'old@example.ie');
+  const sessDir = path.join(s.priv, 'storage', 'sessions');
+  for (const f of readdirSync(sessDir)) {
+    const file = path.join(sessDir, f);
+    writeFileSync(file, readFileSync(file, 'utf8').replace(/auth_at\|i:\d+/, 'auth_at|i:1000'));
+  }
+  assert.equal((await old.post('set-password', { password: PASSWORD })).body.error, 'reauth_required');
 });
 
-test('login errors are generic and rate-limited', { skip }, async (t) => {
+test('password login attempts are rate-limited', { skip }, async (t) => {
   const s = await setup();
   t.after(() => s.stop());
-  await verifiedUser(s, 'cian@example.ie');
   const c = new Client(s.url);
   await c.me();
-  const wrong = await c.post('login', { email: 'cian@example.ie', password: 'wrong password here' });
-  const unknown = await c.post('login', { email: 'nobody@example.ie', password: 'wrong password here' });
-  assert.equal(wrong.status, 401);
-  assert.equal(unknown.status, 401);
-  assert.equal(wrong.body.message, unknown.body.message);
   let last;
-  for (let i = 0; i < 8; i += 1) last = await c.post('login', { email: 'cian@example.ie', password: 'wrong password here' });
+  for (let i = 0; i < 9; i += 1) last = await c.post('login', { email: 'cian@example.ie', password: 'wrong password here' });
   assert.equal(last.status, 429);
   assert.ok(Number(last.headers.get('retry-after')) > 0);
 });
@@ -276,8 +394,8 @@ test('login errors are generic and rate-limited', { skip }, async (t) => {
 test('two users can never read or change each other’s records', { skip }, async (t) => {
   const s = await setup();
   t.after(() => s.stop());
-  const a = await verifiedUser(s, 'a@example.ie');
-  const b = await verifiedUser(s, 'b@example.ie');
+  const a = await codeLogin(s, 'a@example.ie');
+  const b = await codeLogin(s, 'b@example.ie');
   const shared = '11111111-1111-4111-8111-111111111111';
   assert.equal((await a.post('push', { records: [rec('weights', shared, '2026-11-01T08:00:00.000Z', { id: shared, localDate: '2026-11-01', weightKg: 80 }), rec('profile', 'profile', '2026-11-01T08:00:00.000Z', { ageYears: 30 })] })).body.accepted, 2);
   // B pushes a record with the same ID: it lands in B's own space.
@@ -312,7 +430,7 @@ test('two users can never read or change each other’s records', { skip }, asyn
 test('sync: last write wins, tombstones, validation, cursor paging', { skip }, async (t) => {
   const s = await setup();
   t.after(() => s.stop());
-  const c = await verifiedUser(s, 'sync@example.ie');
+  const c = await codeLogin(s, 'sync@example.ie');
   const id = '22222222-2222-4222-8222-222222222222';
   assert.equal((await c.post('push', { records: [rec('workouts', id, '2026-11-05T10:00:00.000Z', { durationMin: 30 })] })).body.accepted, 1);
   const older = await c.post('push', { records: [rec('workouts', id, '2026-11-05T09:00:00.000Z', { durationMin: 10 })] });
@@ -351,60 +469,156 @@ test('sync: last write wins, tombstones, validation, cursor paging', { skip }, a
   assert.equal(all.body.records.filter((r) => r.collection === 'diary').length, 300);
 });
 
-test('password reset: generic request, single-use token, logs out every device', { skip }, async (t) => {
+test('log out, log out everywhere, and account deletion', { skip }, async (t) => {
   const s = await setup();
   t.after(() => s.stop());
-  const phone = await verifiedUser(s, 'orla@example.ie');
-  const laptop = new Client(s.url);
-  await laptop.me();
-  await laptop.post('login', { email: 'orla@example.ie', password: PASSWORD });
-  assert.ok((await laptop.me()).body.user);
+  const phone = await codeLogin(s, 'del@example.ie');
+  const laptop = await codeLogin(s, 'del@example.ie');
+  assert.equal((await laptop.post('logout-everywhere', {})).status, 200);
+  assert.equal((await phone.me()).body.user, null);
+  assert.equal((await laptop.me()).body.user, null);
 
-  const req = await laptop.post('request-reset', { email: 'orla@example.ie' });
-  const reqUnknown = await laptop.post('request-reset', { email: 'nobody@example.ie' });
-  assert.equal(req.body.message, reqUnknown.body.message);
-  const mail = s.outbox().filter((m) => m.subject.includes('Reset')).pop();
-  assert.match(mail.text, /#account\/reset\?token=/);
-  const token = tokenFrom(mail);
-  assert.equal((await laptop.post('reset', { token, password: 'short' })).body.error, 'weak_password');
-  const ok = await laptop.post('reset', { token, password: 'a brand new long passphrase' });
-  assert.equal(ok.status, 200, JSON.stringify(ok.body));
-  assert.equal((await laptop.post('reset', { token, password: 'yet another long passphrase' })).body.error, 'invalid_token');
-  assert.equal((await phone.me()).body.user, null, 'other sessions are logged out');
-  assert.equal((await phone.call('pull')).status, 401);
-  assert.equal((await laptop.post('login', { email: 'orla@example.ie', password: PASSWORD })).status, 401);
-  assert.equal((await laptop.post('login', { email: 'orla@example.ie', password: 'a brand new long passphrase' })).status, 200);
-});
-
-test('account deletion needs the password and removes everything; logout works', { skip }, async (t) => {
-  const s = await setup();
-  t.after(() => s.stop());
-  const c = await verifiedUser(s, 'del@example.ie');
+  const c = await codeLogin(s, 'del@example.ie');
   await c.post('push', { records: [rec('weights', 'w1', '2026-11-01T08:00:00Z', { weightKg: 70 })] });
-  assert.equal((await c.post('delete', { password: 'wrong password here' })).status, 401);
-  const del = await c.post('delete', { password: PASSWORD });
+  assert.equal((await c.post('delete', {})).body.error, 'confirm_required');
+  await c.post('set-password', { password: PASSWORD });
+  assert.equal((await c.post('delete', { confirm: 'DELETE', password: 'wrong password here' })).status, 401);
+  const del = await c.post('delete', { confirm: 'DELETE', password: PASSWORD });
   assert.equal(del.status, 200);
   assert.equal((await c.me()).body.user, null);
-  for (const table of ['users', 'records', 'auth_tokens']) {
+  for (const table of ['users', 'records', 'login_codes']) {
     assert.equal(JSON.parse(sql(`SELECT COUNT(*) AS n FROM ${table}`, s.dbName).stdout)[0].n, 0, table);
   }
-  const d = await verifiedUser(s, 'again@example.ie');
-  assert.equal((await d.post('logout', {})).status, 200);
-  assert.equal((await d.me()).body.user, null);
-  assert.equal((await d.call('pull')).status, 401);
+  // Without a password, a recent code login is enough.
+  const d = await codeLogin(s, 'again@example.ie');
+  assert.equal((await d.post('delete', { confirm: 'DELETE' })).status, 200);
+  const e = await codeLogin(s, 'bye@example.ie');
+  assert.equal((await e.post('logout', {})).status, 200);
+  assert.equal((await e.me()).body.user, null);
+  assert.equal((await e.call('pull')).status, 401);
 });
 
-test('cleanup removes unconfirmed sign-ups after 7 days and expired tokens', { skip }, async (t) => {
+test('signups can be closed: existing users still log in, new emails get no account', { skip }, async (t) => {
+  const s = await setup({ extra: { signups_open: false } });
+  t.after(() => s.stop());
+  sql("INSERT INTO users (id, email, role, email_verified_at, health_consent_at, created_at, updated_at) VALUES ('33333333-3333-4333-8333-333333333333', 'old@example.ie', 'user', UTC_TIMESTAMP(), UTC_TIMESTAMP(), UTC_TIMESTAMP(), UTC_TIMESTAMP())", s.dbName);
+  await codeLogin(s, 'old@example.ie');
+  const c = new Client(s.url);
+  assert.equal((await c.me()).body.signupsOpen, false);
+  assert.equal((await c.post('request-code', { email: 'new@example.ie' })).status, 200);
+  assert.match(lastMail(s, 'new@example.ie').text, /paused/);
+  assert.ok(!/\d{6}/.test(lastMail(s, 'new@example.ie').text), 'no code sent');
+  // The admin email can always join, so the site cannot lock its owner out.
+  await codeLogin(s, 'boss@example.ie');
+});
+
+test('admin: the ADMIN_EMAIL account becomes admin; others are refused', { skip }, async (t) => {
   const s = await setup();
   t.after(() => s.stop());
-  await verifiedUser(s, 'keep@example.ie');
+  const user = await codeLogin(s, 'aoife@example.ie');
+  await user.post('push', { records: [rec('weights', 'w1', '2026-11-01T08:00:00Z', { weightKg: 70 })] });
+  assert.equal((await user.admin('overview')).status, 403);
+  assert.equal((await user.admin('users')).status, 403);
+  assert.equal((await user.admin('settings', { values: { signups_open: false } })).status, 403);
+  assert.equal((await new Client(s.url).admin('overview')).status, 403);
+
+  const admin = await codeLogin(s, 'Boss@Example.ie');
+  assert.equal((await admin.me()).body.user.role, 'admin');
+  const ov = await admin.admin('overview');
+  assert.equal(ov.status, 200, JSON.stringify(ov.body));
+  assert.deepEqual([ov.body.users.total, ov.body.users.admins, ov.body.records], [2, 1, 1]);
+  assert.match(ov.body.features.mail, /outbox/);
+  // The user list never includes health data.
+  const list = await admin.admin('users', undefined, { query: '&q=aoife' });
+  assert.equal(list.body.users.length, 1);
+  const u = list.body.users[0];
+  assert.deepEqual([u.email, u.role, u.recordCount, u.disabled], ['aoife@example.ie', 'user', 1, false]);
+  assert.ok(!JSON.stringify(list.body).includes('weightKg'));
+  assert.equal((await admin.admin('users', undefined, { query: '&q=%25' })).body.users.length, 0, 'LIKE wildcards are escaped');
+
+  // Disable: logged out at once, cannot get a code, cannot log in. Enable restores.
+  assert.equal((await admin.admin('user', { id: u.id, op: 'disable' })).status, 200);
+  assert.equal((await user.me()).body.user, null);
+  const before = s.outbox().length;
+  await user.post('request-code', { email: 'aoife@example.ie' });
+  assert.equal(s.outbox().length, before, 'no code for a disabled account');
+  assert.equal((await admin.admin('user', { id: u.id, op: 'enable' })).status, 200);
+  await codeLogin(s, 'aoife@example.ie', { client: user });
+  // Make admin and back.
+  assert.equal((await admin.admin('user', { id: u.id, op: 'make-admin' })).status, 200);
+  assert.equal((await user.admin('overview')).status, 200);
+  assert.equal((await admin.admin('user', { id: u.id, op: 'remove-admin' })).status, 200);
+  assert.equal((await user.admin('overview')).status, 403, 'role is checked on every request');
+  // Guards.
+  const self = (await admin.admin('users', undefined, { query: '&q=boss' })).body.users[0];
+  assert.equal((await admin.admin('user', { id: self.id, op: 'disable' })).body.error, 'self');
+  assert.equal((await admin.admin('user', { id: self.id, op: 'remove-admin' })).body.error, 'self');
+  assert.equal((await admin.admin('user', { id: u.id, op: 'explode' })).status, 400);
+  assert.equal((await admin.admin('user', { id: u.id, op: 'delete', confirm: 'wrong' })).body.error, 'confirm_required');
+  assert.equal((await admin.admin('user', { id: u.id, op: 'delete', confirm: 'aoife@example.ie' })).status, 200);
+  assert.equal(JSON.parse(sql('SELECT COUNT(*) AS n FROM records', s.dbName).stdout)[0].n, 0);
+  // Audit trail, without personal data.
+  const audit = await admin.admin('audit');
+  const actions = audit.body.entries.map((e) => e.action);
+  for (const a of ['user.disable', 'user.enable', 'user.make-admin', 'user.remove-admin', 'user.delete']) assert.ok(actions.includes(a), a);
+  const rows = sql('SELECT action, detail FROM audit_log', s.dbName).stdout;
+  assert.ok(!rows.includes('aoife'), 'no emails in the audit table');
+  // Test email goes to the admin.
+  const te = await admin.admin('test-email', {});
+  assert.equal(te.status, 200);
+  assert.equal(lastMail(s, 'boss@example.ie').subject, 'LetsGetFit test email');
+});
+
+test('admin settings: API keys are encrypted, masked, and applied straight away', { skip }, async (t) => {
+  const s = await setup();
+  t.after(() => s.stop());
+  const admin = await codeLogin(s, 'boss@example.ie');
+  const view = await admin.admin('settings');
+  assert.equal(view.status, 200);
+  assert.equal(view.body.secretsStorable, true);
+  assert.equal(view.body.fields.openai_api_key.source, 'none');
+  assert.equal(view.body.fields.signups_open.value, true);
+  assert.equal((await fetch(`${s.url}/api/health.php`).then((r) => r.json())).aiScan, 'disabled');
+
+  const key = 'sk-test-abcdefghijklmnopqrstuvwxyz1234';
+  const bad = await admin.admin('settings', { values: { openai_api_key: 'not a key!', scan_daily_limit: 0, nonsense: 1 } });
+  assert.equal(bad.status, 422);
+  assert.deepEqual(Object.keys(bad.body.fields).sort(), ['nonsense', 'openai_api_key', 'scan_daily_limit']);
+  const ok = await admin.admin('settings', { values: { openai_api_key: key, scan_daily_limit: 50, signups_open: false, privacy_contact_email: 'privacy@example.ie' } });
+  assert.equal(ok.status, 200, JSON.stringify(ok.body));
+  const after = await admin.admin('settings');
+  assert.deepEqual(after.body.fields.openai_api_key.stored, { set: true, hint: '…1234' });
+  assert.equal(after.body.fields.openai_api_key.source, 'admin');
+  assert.equal(after.body.fields.scan_daily_limit.value, 50);
+  assert.ok(!JSON.stringify(after.body).includes(key), 'the key is never sent back');
+  const raw = sql("SELECT value, is_secret FROM settings WHERE name = 'openai_api_key'", s.dbName).stdout;
+  assert.ok(!raw.includes(key) && raw.includes('v1:'), 'encrypted in the database');
+  // Applied: health sees the scan key; the account page sees closed sign-ups and the contact.
+  assert.equal((await fetch(`${s.url}/api/health.php`).then((r) => r.json())).aiScan, 'enabled');
+  const me = await new Client(s.url).me();
+  assert.deepEqual([me.body.signupsOpen, me.body.privacyContact], [false, 'privacy@example.ie']);
+  // Pausing scanning switches it off without removing the key.
+  await admin.admin('settings', { values: { scan_enabled: false } });
+  assert.equal((await fetch(`${s.url}/api/health.php`).then((r) => r.json())).aiScan, 'disabled');
+  // Clearing a value falls back to the private settings file.
+  await admin.admin('settings', { values: { openai_api_key: '', scan_enabled: true } });
+  assert.equal((await admin.admin('settings')).body.fields.openai_api_key.source, 'none');
+  const changes = JSON.parse(sql("SELECT detail FROM audit_log WHERE action = 'settings.changed'", s.dbName).stdout).map((r) => r.detail);
+  assert.ok(changes.includes('openai_api_key'));
+  assert.ok(!sql('SELECT * FROM audit_log', s.dbName).stdout.includes('sk-test'), 'values are never audited');
+});
+
+test('cleanup removes expired codes and prints no personal data', { skip }, async (t) => {
+  const s = await setup();
+  t.after(() => s.stop());
+  await codeLogin(s, 'keep@example.ie');
   const c = new Client(s.url);
   await c.me();
-  await c.post('register', { email: 'stale@example.ie', password: PASSWORD, healthConsent: true });
-  sql("UPDATE users SET created_at = UTC_TIMESTAMP() - INTERVAL 8 DAY WHERE email = 'stale@example.ie'", s.dbName);
+  await c.post('request-code', { email: 'stale@example.ie' });
+  sql('UPDATE login_codes SET expires_at = UTC_TIMESTAMP() - INTERVAL 1 HOUR', s.dbName);
   const r = spawnSync('php', [path.join(s.priv, 'app', 'bin', 'cleanup.php')], { encoding: 'utf8', env: { ...process.env, LETSGETFIT_PRIVATE_DIR: s.priv } });
   assert.equal(r.status, 0, r.stderr);
-  assert.match(r.stdout, /1 unconfirmed sign-ups/);
-  assert.deepEqual(JSON.parse(sql('SELECT email FROM users', s.dbName).stdout).map((u) => u.email), ['keep@example.ie']);
+  assert.match(r.stdout, /Removed 1 expired login codes/);
+  assert.equal(JSON.parse(sql('SELECT COUNT(*) AS n FROM login_codes', s.dbName).stdout)[0].n, 0);
   assert.ok(!r.stdout.includes('@'), 'no personal data printed');
 });

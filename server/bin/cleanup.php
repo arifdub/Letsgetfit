@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 // Scheduled maintenance (optional cron job, for example daily at 03:17):
 //   php /home/USER/domains/letsgetfit.site/letsgetfit-private/app/bin/cleanup.php
-// Removes expired sign-in tokens, sign-ups never confirmed within 7 days, and old cache and
+// Removes expired login codes, audit entries older than a year, and old cache, outbox and
 // rate-limit files. Safe to run at any time; prints counts only (no personal data).
 
 if (PHP_SAPI !== 'cli') {
@@ -14,6 +14,9 @@ if (PHP_SAPI !== 'cli') {
 
 require __DIR__ . '/../bootstrap.php';
 
+use LetsGetFit\Accounts\Audit;
+use LetsGetFit\Api;
+use LetsGetFit\Auth\LoginCodes;
 use LetsGetFit\Config;
 use LetsGetFit\Db\Database;
 use LetsGetFit\RateLimiter;
@@ -35,7 +38,7 @@ echo "Removed {$removedFiles} old cache/outbox files; pruned rate-limit files.\n
 
 if ($config->bool('accounts_enabled')) {
     $pdo = Database::connect($config);
-    $tokens = $pdo->exec('DELETE FROM auth_tokens WHERE expires_at < UTC_TIMESTAMP() - INTERVAL 1 DAY OR used_at < UTC_TIMESTAMP() - INTERVAL 1 DAY');
-    $unverified = $pdo->exec('DELETE FROM users WHERE email_verified_at IS NULL AND created_at < UTC_TIMESTAMP() - INTERVAL 7 DAY');
-    echo "Removed {$tokens} expired tokens and {$unverified} unconfirmed sign-ups.\n";
+    $codes = (new LoginCodes($pdo, Api::secret($config)))->prune();
+    $audit = Audit::prune($pdo, 365);
+    echo "Removed {$codes} expired login codes and {$audit} old audit entries.\n";
 }

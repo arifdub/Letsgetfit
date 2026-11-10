@@ -5,7 +5,7 @@
 | 1 | Calculator and local tracking (static) | **Complete**: implemented and tested. Automatic FTPS deploy to cPanel is configured; the first live deploy depends on the server setup in docs/DEPLOY-CPANEL.md. |
 | 2 | Food diary and nutrient data (manual diary, PHP FoodData Central adapter, Open Food Facts evaluation) | **Complete**: implemented and tested; deployed by the FTPS workflow. Barcode lookup is deferred (see docs/FOOD-DATA.md). |
 | 3 | Workouts library, routines and progress trends | **Complete**: implemented and tested; deployed by the FTPS workflow. |
-| 4 | Optional accounts and cloud sync | **Built and tested; switched OFF in production** until the database, email and EU privacy review are done (docs/PRIVACY.md §3). |
+| 4 | Optional accounts and cloud sync, user panel and admin panel | **Built and tested; switched OFF in production** until the database and email secrets are added and the privacy checklist is signed off (docs/PRIVACY.md §3). Sign-in is by emailed code with an optional password; `ADMIN_EMAIL` becomes the admin. |
 | 5 | Goals and AI meal scan | **Goals: complete and live.** **Meal scan: built and tested; switched OFF until an `OPENAI_API_KEY` secret is set** (see docs/PRIVACY.md §4). |
 
 ## Phase 1 acceptance
@@ -70,14 +70,15 @@
 
 | Criterion | How it is verified |
 |---|---|
-| Anonymous use stays available | The account card only appears when the server reports accounts are enabled (e2e smoke: hidden on static or disabled). Disabled accounts answer `{"enabled":false}` with no error. |
-| Accounts, email verification, password reset | API tests (`tests/api/accounts.test.mjs`, real PHP + MariaDB) cover register, single-use confirmation link, login only after confirming, and reset. Browser tests (`tests/e2e/accounts.mjs`) cover the full flow with emailed links. |
-| Maintained primitives and libraries | `password_hash` with Argon2id, `random_bytes` tokens stored as SHA-256, PHP sessions, and PHPMailer (Composer, built in CI) for SMTP |
-| Secure session cookies, CSRF, rate limits, safe recovery | Tests cover HttpOnly and SameSite=Lax cookies, a new session ID at login, CSRF/JSON/Origin checks (403 and 415), login rate limit (429 + Retry-After), and generic responses for login, sign-up and reset (no account enumeration). A reset logs out every device. |
+| Anonymous use stays available | The Account tab only appears when the server reports accounts are enabled (e2e smoke: hidden on static or disabled). Disabled accounts answer `{"enabled":false}` with no error. |
+| Join and log in by email code; optional password | API tests (`tests/api/accounts.test.mjs`, real PHP + MariaDB) cover codes (hashed, single use, 10-minute expiry, 5 wrong guesses, 5 emails an hour per address), consent before an account is created, closed sign-ups, and adding, changing and removing a password. Browser tests (`tests/e2e/accounts.mjs`) cover the full flow with emailed codes. |
+| Admin panel | API and browser tests: database setup with the one-time token (wrong token refused, rate-limited), `ADMIN_EMAIL` becomes admin, members are refused (role checked on every request), encrypted and masked API keys applied straight away, disable/enable/admin/delete with self-protection, audit log without personal data, test email |
+| Maintained primitives and libraries | `password_hash` with Argon2id, `random_int` codes stored as HMAC, libsodium for stored keys, PHP sessions, and PHPMailer (Composer, built in CI) for SMTP |
+| Secure session cookies, CSRF, rate limits, safe recovery | Tests cover HttpOnly and SameSite=Lax cookies, a new session ID at login, CSRF/JSON/Origin checks (403 and 415), login rate limit (429 + Retry-After), and generic responses for code requests and login (no account enumeration). Password changes and "log out everywhere" log out other devices. |
 | Ownership enforced on every read and write | Test "two users can never read or change each other's records": same record ID, pulls, deletions, exports, a client-supplied user ID ignored, and 401 when logged out |
 | Opt-in migration with preview and duplicate protection | Unit `sync.test.mjs` (preview: upload, download, already there, conflicts, likely duplicates). Browser test: the second device skips a duplicate weight and receives the account's workout. |
 | Sync including deletions | Unit (last write wins, tombstones, newer local edits kept); API (cursor paging including 300 same-millisecond records); browser (a deletion on device 2 reaches device 1) |
-| Account export and deletion | API and browser tests: export JSON (no hashes); deletion needs the password, removes the user, records and tokens, and leaves device data untouched |
+| Account export and deletion | API and browser tests: export JSON (no hashes); deletion needs the password (or a recent code login), removes the user and records, and leaves device data untouched |
 | Migrations, backup and restore documented | `server/migrations/*.sql`, `bin/migrate.php` (tested: applies once, status, CLI only), `docs/DATABASE.md` |
 | Privacy documentation before collecting health data | `docs/PRIVACY.md` (inventory, purposes, lawful bases, retention, processors, access controls, launch checklist including the EU review and DPIA) and `docs/PRIVACY-NOTICE-ACCOUNTS-DRAFT.md` |
 | Private data kept out of logs and errors | Error logs record exception class only; the cleanup script prints counts only (tested); deploy never prints secrets (tested) |
@@ -86,9 +87,10 @@
 ### What is needed to switch accounts on
 
 1. Database and user created on the host (`docs/DATABASE.md` §1), plus `DB_*` secrets.
-2. An SMTP mailbox or provider, plus `SMTP_*` and `MAIL_FROM` secrets, and SPF, DKIM and DMARC DNS records.
-3. The privacy launch checklist and EU review (`docs/PRIVACY.md` §3), with the accounts privacy notice published.
-4. Migrations run by hand, a staging email test, then the `ACCOUNTS_ENABLED` variable set to `true`.
+2. A mailbox, plus `SMTP_*` and `MAIL_FROM` secrets, and SPF, DKIM and DMARC DNS records.
+3. `APP_HASH_SECRET`, `ADMIN_EMAIL` and `ADMIN_SETUP_TOKEN` secrets.
+4. The privacy launch checklist (`docs/PRIVACY.md` §3), with the accounts privacy notice published.
+5. The `ACCOUNTS_ENABLED` variable set to `true`, a deploy, then **#admin → Set up the database**, log in as the admin, and send a test email.
 
 ## Phase 5 acceptance
 

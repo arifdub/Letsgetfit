@@ -61,7 +61,7 @@ final class SessionManager
         return $token !== '' && is_string($header) && hash_equals($token, $header);
     }
 
-    /** The logged-in user ID, or null. Checks the account still exists and the session version matches. */
+    /** The logged-in user ID, or null. Checks the account still exists, is enabled and the session version matches. */
     public function userId(PDO $pdo): ?string
     {
         $id = $_SESSION['uid'] ?? null;
@@ -69,10 +69,10 @@ final class SessionManager
         if (!is_string($id) || !is_int($version)) {
             return null;
         }
-        $stmt = $pdo->prepare('SELECT session_version FROM users WHERE id = ?');
+        $stmt = $pdo->prepare('SELECT session_version, disabled_at FROM users WHERE id = ?');
         $stmt->execute([$id]);
-        $current = $stmt->fetchColumn();
-        if ($current === false || (int) $current !== $version) {
+        $row = $stmt->fetch();
+        if (!$row || (int) $row['session_version'] !== $version || $row['disabled_at'] !== null) {
             $this->logout();
 
             return null;
@@ -81,17 +81,32 @@ final class SessionManager
         return $id;
     }
 
-    public function login(string $userId, int $sessionVersion): void
+    /** @param 'code'|'password' $method */
+    public function login(string $userId, int $sessionVersion, string $method): void
     {
         session_regenerate_id(true);
         $_SESSION['uid'] = $userId;
         $_SESSION['sv'] = $sessionVersion;
+        $_SESSION['method'] = $method;
+        $_SESSION['auth_at'] = time();
         $_SESSION['csrf'] = bin2hex(random_bytes(32));
+    }
+
+    /** Logged in with an email code in the last 15 minutes: allows setting a password without the old one. */
+    public function recentCodeLogin(): bool
+    {
+        return ($_SESSION['method'] ?? '') === 'code' && is_int($_SESSION['auth_at'] ?? null) && time() - $_SESSION['auth_at'] < 900;
+    }
+
+    /** Keep this session valid after the user's session_version changes. */
+    public function refreshVersion(int $sessionVersion): void
+    {
+        $_SESSION['sv'] = $sessionVersion;
     }
 
     public function logout(): void
     {
-        unset($_SESSION['uid'], $_SESSION['sv']);
+        unset($_SESSION['uid'], $_SESSION['sv'], $_SESSION['method'], $_SESSION['auth_at']);
         session_regenerate_id(true);
         $_SESSION['csrf'] = bin2hex(random_bytes(32));
     }

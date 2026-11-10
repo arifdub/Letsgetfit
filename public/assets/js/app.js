@@ -9,10 +9,12 @@ import { initFood } from './ui/food.js';
 import { initTraining } from './ui/training.js';
 import { initProgress } from './ui/progress.js';
 import { initAccount } from './ui/account.js';
+import { initAdmin } from './ui/admin.js';
 import { $, $$, toast } from './ui/dom.js';
 
-export const APP_VERSION = '0.4.0';
-const ROUTES = ['overview', 'food', 'workouts', 'progress', 'settings'];
+export const APP_VERSION = '0.5.0';
+const ROUTES = ['overview', 'food', 'workouts', 'progress', 'account', 'admin', 'settings'];
+let onRoute = () => {};
 
 function showRoute(route, { focus }) {
   for (const view of $$('.view')) view.hidden = view.dataset.view !== route;
@@ -22,11 +24,16 @@ function showRoute(route, { focus }) {
   }
   const title = route.charAt(0).toUpperCase() + route.slice(1);
   document.title = route === 'overview' ? 'LetsGetFit' : `${title} · LetsGetFit`;
-  if (focus) $(`#${route}-title`)?.focus();
+  onRoute(route);
+  if (focus) ($(`#${route}-title`) ?? $(`#${route}-view-title`))?.focus();
 }
 
 function currentRoute() {
-  if (location.hash.startsWith('#account/')) return 'settings';
+  // Old email links (#account/verify?token=…) are no longer used: open the account page.
+  if (location.hash.startsWith('#account/')) {
+    history.replaceState(null, '', '#account');
+    return 'account';
+  }
   const hash = location.hash.replace('#', '');
   return ROUTES.includes(hash) ? hash : 'overview';
 }
@@ -51,7 +58,10 @@ function start() {
   initWeights(store);
   initSettings(store);
   const account = initAccount(store);
-  if (location.hash.startsWith('#account/')) account.handleLink(location.hash);
+  const adminPanel = initAdmin(account);
+  onRoute = (route) => {
+    if (route === 'admin') adminPanel.show();
+  };
 
   // Links that jump to the methods section on the overview.
   for (const link of $$('[data-scroll="methods"]')) {
@@ -71,7 +81,6 @@ function start() {
   }
 
   window.addEventListener('hashchange', () => {
-    if (location.hash.startsWith('#account/')) account.handleLink(location.hash);
     showRoute(currentRoute(), { focus: true });
   });
   showRoute(currentRoute(), { focus: false });

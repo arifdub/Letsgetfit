@@ -84,14 +84,18 @@ console.log(`Smoke tests against ${BASE}`);
 
 await check('loads without errors and shows only working navigation', async () => {
   const { page, context, errors } = await freshPage();
-  const nav = await page.locator('.primary-nav a').allTextContents();
+  const nav = await page.locator('.primary-nav a:visible').allTextContents();
   assert.deepEqual(nav.map((t) => t.trim()), ['Overview', 'Food', 'Workouts', 'Progress', 'Settings']);
   assert.equal(await page.locator('#profile-form').isVisible(), true);
   assert.equal(await page.getAttribute('html', 'lang'), 'en-IE');
-  // Without the account API (static host, or accounts switched off) the account card stays hidden.
+  // Without the account API (static host, or accounts switched off) there is no account tab or link.
   await page.goto(`${BASE}#settings`);
   await page.waitForTimeout(300);
-  assert.equal(await page.isVisible('#account-card'), false);
+  assert.equal(await page.isVisible('#settings-account'), false);
+  assert.equal(await page.isVisible('#nav-account'), false);
+  await page.goto(`${BASE}#account`);
+  await page.waitForSelector('#account-panel .card');
+  assert.match(await page.textContent('#account-panel'), /Accounts are not available/);
   assert.deepEqual(errors, []);
   await context.close();
 });

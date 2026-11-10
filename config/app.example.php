@@ -15,6 +15,17 @@ return [
     // Long random string used to hash visitor IP addresses for rate limiting.
     'hash_secret' => 'REPLACE_WITH_A_LONG_RANDOM_STRING',
 
+    // Optional accounts (written by the deploy from the DB_*, SMTP_*, ADMIN_* secrets; see docs/DATABASE.md):
+    // 'accounts_enabled' => true,
+    // 'db_dsn' => 'mysql:host=localhost;port=3306;dbname=REPLACE_DB_NAME;charset=utf8mb4',
+    // 'db_user' => 'REPLACE_DB_USER',
+    // 'db_password' => 'REPLACE_DB_PASSWORD',
+    // 'mail_transport' => 'smtp',
+    // 'smtp_host' => 'mail.example.com', 'smtp_port' => 465, 'smtp_secure' => 'ssl',
+    // 'smtp_user' => 'no-reply@example.com', 'smtp_password' => 'REPLACE', 'mail_from' => 'no-reply@example.com',
+    // 'admin_email' => 'you@example.com',
+    // 'setup_token' => 'REPLACE_WITH_24_PLUS_RANDOM_CHARACTERS',
+
     // Optional overrides (defaults shown):
     // 'cache_ttl_seconds' => 604800,
     // 'rate_limit_requests' => 30,

@@ -1,4 +1,5 @@
-// Client for /api/account.php. Same-origin requests with the session cookie and CSRF token.
+// Client for /api/account.php and /api/admin.php. Same-origin requests with the session cookie
+// and CSRF token (shared by both endpoints, as they use the same session).
 
 import { batches } from '../lib/sync.js';
 
@@ -6,15 +7,16 @@ const TIMEOUT_MS = 15000;
 let csrfToken = '';
 
 export class AccountError extends Error {
-  constructor(code, message, { status = 0, field = null } = {}) {
+  constructor(code, message, { status = 0, field = null, fields = null } = {}) {
     super(message);
     this.code = code;
     this.status = status;
     this.field = field;
+    this.fields = fields;
   }
 }
 
-async function call(action, { method = 'GET', body, query = '' } = {}) {
+export async function call(action, { method = 'GET', body, query = '', endpoint = 'account' } = {}) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   const headers = { Accept: 'application/json' };
@@ -24,7 +26,7 @@ async function call(action, { method = 'GET', body, query = '' } = {}) {
   }
   let res;
   try {
-    res = await fetch(`api/account.php?action=${encodeURIComponent(action)}${query}`, {
+    res = await fetch(`api/${endpoint}.php?action=${encodeURIComponent(action)}${query}`, {
       method,
       headers,
       credentials: 'same-origin',
@@ -44,29 +46,30 @@ async function call(action, { method = 'GET', body, query = '' } = {}) {
   }
   if (json?.csrfToken) csrfToken = json.csrfToken;
   if (!res.ok) {
-    throw new AccountError(json?.error ?? `http_${res.status}`, typeof json?.message === 'string' ? json.message : 'Something went wrong. Try again.', { status: res.status, field: json?.field ?? null });
+    throw new AccountError(json?.error ?? `http_${res.status}`, typeof json?.message === 'string' ? json.message : 'Something went wrong. Try again.', { status: res.status, field: json?.field ?? null, fields: json?.fields ?? null });
   }
   return json ?? {};
 }
 
-/** { enabled, user } — enabled is false when accounts are switched off or unreachable. */
+/** { enabled, user, signupsOpen, privacyContact }: enabled is false when accounts are off or unreachable. */
 export async function getAccountState() {
   try {
     const me = await call('me');
-    return { enabled: me.enabled === true, user: me.user ?? null };
+    return { enabled: me.enabled === true, user: me.user ?? null, signupsOpen: me.signupsOpen !== false, privacyContact: me.privacyContact ?? null };
   } catch {
-    return { enabled: false, user: null };
+    return { enabled: false, user: null, signupsOpen: false, privacyContact: null };
   }
 }
 
-export const register = (email, password, healthConsent) => call('register', { method: 'POST', body: { email, password, healthConsent } });
-export const verifyEmail = (token) => call('verify', { method: 'POST', body: { token } });
-export const resendVerification = (email) => call('resend', { method: 'POST', body: { email } });
-export const login = (email, password) => call('login', { method: 'POST', body: { email, password } });
-export const logout = () => call('logout', { method: 'POST', body: {} });
-export const requestReset = (email) => call('request-reset', { method: 'POST', body: { email } });
-export const resetPassword = (token, password) => call('reset', { method: 'POST', body: { token, password } });
-export const deleteAccount = (password) => call('delete', { method: 'POST', body: { password } });
+const post = (action, body = {}) => call(action, { method: 'POST', body });
+export const requestCode = (email) => post('request-code', { email });
+export const verifyCode = (email, code, healthConsent) => post('verify-code', { email, code, healthConsent });
+export const login = (email, password) => post('login', { email, password });
+export const setPassword = (password, currentPassword) => post('set-password', { password, currentPassword });
+export const removePassword = (currentPassword) => post('set-password', { remove: true, currentPassword });
+export const logout = () => post('logout');
+export const logoutEverywhere = () => post('logout-everywhere');
+export const deleteAccount = (password) => post('delete', { confirm: 'DELETE', password });
 export const exportAccount = () => call('export');
 
 /** Pull every page of changes after the cursor. */

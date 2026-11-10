@@ -46,3 +46,19 @@ test('record validation', function () {
     ok(RecordStore::validCursor('2026-11-01 08:00:00.123|weights|abc-1'), 'cursor ok');
     ok(!RecordStore::validCursor("2026-11-01 08:00:00|weights|x' OR 1=1"), 'cursor injection rejected');
 });
+
+test('admin setting validation and config overrides', function () {
+    eq(\LetsGetFit\Settings\SettingsStore::validate('bool', true), null);
+    ok(\LetsGetFit\Settings\SettingsStore::validate('bool', 'yes') !== null, 'bool must be a boolean');
+    eq(\LetsGetFit\Settings\SettingsStore::validate('int:1:10000', 50), null);
+    ok(\LetsGetFit\Settings\SettingsStore::validate('int:1:10000', 0) !== null, 'below the minimum');
+    ok(\LetsGetFit\Settings\SettingsStore::validate('int:1:10000', '5; DROP') !== null, 'not a number');
+    eq(\LetsGetFit\Settings\SettingsStore::validate('secret', 'sk-proj-abc_DEF-123456'), null);
+    ok(\LetsGetFit\Settings\SettingsStore::validate('secret', "sk-abc'; --") !== null, 'odd characters rejected');
+    ok(\LetsGetFit\Settings\SettingsStore::validate('model', 'gpt 4o') !== null, 'model names have no spaces');
+    $config = \LetsGetFit\Config::fromArray(['openai_model' => 'gpt-4o-mini', 'scan_enabled' => true]);
+    $over = $config->withOverrides(['openai_model' => 'gpt-4.1-mini', 'db_password' => 'injected']);
+    eq($over->string('openai_model'), 'gpt-4.1-mini');
+    eq($over->string('db_password'), '', 'unknown keys are ignored');
+    eq($config->string('openai_model'), 'gpt-4o-mini', 'the original is unchanged');
+});
