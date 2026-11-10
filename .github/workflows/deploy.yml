@@ -100,7 +100,8 @@ jobs:
           SCAN_DAILY_LIMIT: ${{ vars.SCAN_DAILY_LIMIT }}
           # Optional accounts (Phase 4): OFF unless the ACCOUNTS_ENABLED variable is 'true' and
           # every database and email secret below is set. See docs/DATABASE.md and docs/PRIVACY.md.
-          ACCOUNTS_ENABLED: ${{ vars.ACCOUNTS_ENABLED }}
+          # Read from a variable or, if saved there by mistake, a secret.
+          ACCOUNTS_ENABLED: ${{ vars.ACCOUNTS_ENABLED || secrets.ACCOUNTS_ENABLED }}
           DB_HOST: ${{ secrets.DB_HOST }}
           DB_PORT: ${{ secrets.DB_PORT }}
           DB_NAME: ${{ secrets.DB_NAME }}

@@ -62,7 +62,7 @@ if ($openAiKey !== '') {
     $config += ['openai_api_key' => $openAiKey, 'openai_model' => $model, 'scan_daily_limit' => (int) $daily];
 }
 
-if (env('ACCOUNTS_ENABLED') === 'true') {
+if (in_array(strtolower(trim(env('ACCOUNTS_ENABLED'))), ['true', 'yes', 'on', '1'], true)) {
     $missing = array_values(array_filter(
         // A fixed APP_HASH_SECRET keeps login codes and API keys saved in the admin panel readable
         // after each deploy (otherwise a random one is made every time).

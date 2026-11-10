@@ -47,6 +47,12 @@ info() {
 }
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+# Accept "true", "True", " TRUE ", "yes", "on" or "1" for ACCOUNTS_ENABLED.
+case "$(printf '%s' "${ACCOUNTS_ENABLED:-}" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')" in
+  true|yes|on|1) ACCOUNTS_ENABLED=true ;;
+  *) ACCOUNTS_ENABLED="" ;;
+esac
+export ACCOUNTS_ENABLED
 SOURCE="${DEPLOY_SOURCE:-$REPO_ROOT/public}"
 SERVER_SOURCE="${DEPLOY_SERVER_SOURCE:-$REPO_ROOT/server}"
 MARKER=".letsgetfit-docroot"
@@ -284,7 +290,7 @@ deploy_private() {
   if [ -n "${FDC_API_KEY:-}" ] || [ -n "${OPENAI_API_KEY:-}" ] || [ "${ACCOUNTS_ENABLED:-}" = "true" ]; then
     :
   elif run_lftp "cd \"$target\"" "cd .." "cls -1 $private_root/config/app.php" >/dev/null 2>&1; then
-    info "kept the existing server settings (no FDC_API_KEY or ACCOUNTS_ENABLED secret set)."
+    info "kept the existing server settings (no FDC_API_KEY, OPENAI_API_KEY or ACCOUNTS_ENABLED=true set). To switch accounts on, add the ACCOUNTS_ENABLED variable with the value true."
     return 0
   else
     echo "::warning::No FDC_API_KEY secret is set, so food search uses the public DEMO_KEY, which allows only a few searches per hour. Get a free key at https://fdc.nal.usda.gov/api-key-signup and add it as the FDC_API_KEY repository secret."
