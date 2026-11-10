@@ -67,6 +67,10 @@ No Composer dependencies are needed yet. Everything uses PHP's standard library 
 | Composite pull cursor (server time, collection, ID) | Paging never skips records written in the same millisecond. |
 | PHP sessions (files in private storage) + `session_version` | No extra infrastructure on shared hosting. A password reset logs out everywhere. |
 | Settings written with `var_export` by `scripts/write-config.php` | Secrets with quotes cannot break or inject into the PHP settings file. |
+| Goals stored on the profile (`profile.goal`), with the plan computed in `lib/goals.js` | Synced with the profile; no schema change. Safeguards are enforced in validation, not just the UI. |
+| AI only suggests foods and grams; nutrients always come from the database | A photo cannot measure nutrients. Database values carry units and unknowns, and diary snapshots stay consistent. |
+| Scan: browser and server both re-encode the photo; in memory only; idempotency key + lock | Metadata removed twice, nothing stored, and a double tap or retry never charges twice. |
+| OpenAI Chat Completions with a strict JSON schema, behind an adapter | Predictable, validated output. The provider can be swapped by replacing `server/src/Scan/OpenAiVision.php`. |
 | Units preference kept apart from the profile | Changing display units never changes stored values. |
 | Logged workouts are not added to maintenance | The activity level already includes usual exercise. Adding workouts again would double-count. |
 | Maintenance only; no loss or gain targets | Targets need separately reviewed eligibility rules and safeguards (see `docs/STATUS.md`). |

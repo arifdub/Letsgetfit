@@ -31,7 +31,8 @@ Guidance for anyone, human or AI, changing this repository.
 
 - Verify formulas against primary sources and record the equation, units, population, assumptions, limits and source in `docs/FORMULAS.md`, `ui/methods.js` and the tests.
 - Present every figure as an estimate. Use neutral wording, and make no promises about weight, body composition or health.
-- Do not infer body fat, fitness or health from BMI. Weight loss and gain targets need a separate reviewed feature with eligibility checks and safeguards.
+- Do not infer body fat, fitness or health from BMI. Weight goals live in `lib/goals.js`. Never loosen their safeguards (healthy-range limits, rate caps, energy floors, eligibility) without a documented review.
+- AI output is a suggestion only: never use it for nutrient values, allergens or anything saved without the user's confirmation.
 
 ## Style
 

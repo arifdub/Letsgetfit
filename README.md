@@ -12,7 +12,7 @@ All figures are presented as estimates. The app does not give medical advice or 
 | 2 | Food diary and nutrient data (PHP food search) | ✅ Complete, live |
 | 3 | Exercise library, routines, progress trends | ✅ Complete, live |
 | 4 | Optional accounts and sync | ✅ Built and tested · switched off until launch checklist is done |
-| 5 | AI meal scan | Next |
+| 5 | Goals and AI meal scan | ✅ Goals live · scan built, switched off until an OpenAI key is added |
 
 Details and acceptance checks: [docs/STATUS.md](docs/STATUS.md).
 
@@ -70,6 +70,19 @@ Calorie estimates for sessions stay optional, labelled and separate from daily e
   - CSRF and origin checks, rate limits, and no way to tell whether an email has an account;
   - every record is scoped to the logged-in user.
 - **Operations:** MySQL or MariaDB migrations, run by hand, plus a cleanup script. Backup and restore are in [docs/DATABASE.md](docs/DATABASE.md); privacy and the launch checklist are in [docs/PRIVACY.md](docs/PRIVACY.md).
+
+## What Phase 5 adds
+
+- **Goals** (Overview):
+  - a healthy weight range for your height (BMI 18.5–24.9), shown as a range rather than one "ideal" weight;
+  - maintenance energy, and the allowed daily energy for losing, maintaining or gaining weight, with the difference, a macro split and an estimated date.
+  - **Safeguards:** no target below or above the healthy range; at most 1% of body weight and 1 kg a week; never below 1,200 or 1,500 kcal; adults only, not during pregnancy; and a link to Bodywhys (Irish eating-disorder support).
+- **AI meal scan** (Food → Scan photo, once an OpenAI key is set):
+  - take or choose a photo, read where it goes, then confirm;
+  - OpenAI suggests foods and portion ranges, and each is matched to USDA FoodData Central;
+  - you correct matches and grams and add hidden items such as oil;
+  - nutrients are calculated from the database, and nothing is saved until you confirm.
+  - **Privacy and cost:** photos are stripped of metadata and not stored, with consent checked on the server, per-visitor and daily limits, and repeat-submission protection.
 
 ## Run it locally
 
@@ -138,6 +151,7 @@ Each service, and how to run without production credentials:
 | Service | Phase | Needed for |
 |---|---|---|
 | USDA FoodData Central API | 2 (live) | Food search. Optional `FDC_API_KEY` secret; without it the public DEMO_KEY is used. Tests use a mock server and fixtures. |
+| OpenAI API (vision) | 5 (off) | Meal photo suggestions. Secret `OPENAI_API_KEY`; tests use `tests/php/mock-openai.php`. |
 | Open Food Facts | Evaluated, not adopted | Irish and EU branded products and barcodes (see docs/FOOD-DATA.md) |
 | MySQL / MariaDB | 4 (off) | Accounts and sync. Tests use a throwaway database (`LGF_TEST_DB_*` variables); CI uses a MariaDB service. |
 | SMTP / email provider | 4 (off) | Confirmation and reset emails. Development and tests use a private outbox (`mail_transport: outbox`). |

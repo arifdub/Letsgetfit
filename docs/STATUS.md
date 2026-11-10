@@ -6,7 +6,7 @@
 | 2 | Food diary and nutrient data (manual diary, PHP FoodData Central adapter, Open Food Facts evaluation) | **Complete**: implemented and tested; deployed by the FTPS workflow. Barcode lookup is deferred (see docs/FOOD-DATA.md). |
 | 3 | Workouts library, routines and progress trends | **Complete**: implemented and tested; deployed by the FTPS workflow. |
 | 4 | Optional accounts and cloud sync | **Built and tested; switched OFF in production** until the database, email and EU privacy review are done (docs/PRIVACY.md §3). |
-| 5 | AI meal scan | Not started. Next. |
+| 5 | Goals and AI meal scan | **Goals: complete and live.** **Meal scan: built and tested; switched OFF until an `OPENAI_API_KEY` secret is set** (see docs/PRIVACY.md §4). |
 
 ## Phase 1 acceptance
 
@@ -90,15 +90,23 @@
 3. The privacy launch checklist and EU review (`docs/PRIVACY.md` §3), with the accounts privacy notice published.
 4. Migrations run by hand, a staging email test, then the `ACCOUNTS_ENABLED` variable set to `true`.
 
-## Phase 5 plan (summary)
+## Phase 5 acceptance
 
-AI meal scan:
+| Criterion | How it is verified |
+|---|---|
+| Goals: healthy weight range, maintenance and allowed calories, targets with safeguards | Unit `goals.test.mjs`: range, the 7,700 kcal/kg plan and timeline, the floor and the reduced pace, rate cap at 1% of body weight, healthy-range limits, no loss goal when underweight, eligibility. Browser: loss plan, Food page reference, floor notice, gain cap. |
+| Photo picker and mobile camera | `capture="environment"` input for camera, and a separate file picker. Browser re-encode (orientation, ≤1600 px, metadata dropped). |
+| Explain and ask before sending | Consent panel (server, OpenAI, retention, limits). Browser test: nothing sent before consent. Server refuses uploads without `X-Scan-Consent: yes` (API test). |
+| Server-side type and size checks, metadata removal, quotas, rate limits, temporary images deleted | PHP: MIME sniffing, size and pixel limits, decompression-bomb guard, GPS marker removed after re-encode. API: non-images rejected before any AI call; per-visitor and site-wide limits; no image files left in storage. |
+| Credentials on the server; timeouts and cost controls | Key only in the `Authorization` header (PHP test). 5 s connect and 30 s total timeout (API timeout test). Low-detail images, an output token cap and a daily cap. |
+| Model suggests foods and portion ranges, matched to the Phase 2 database | API: suggestions come with up to 3 USDA candidates, and there are no nutrient numbers in the AI output. Browser: totals use database values (120 g apple = 62 kcal). |
+| Editable ingredients and grams; questions about oils and sauces; unknown nutrients | Browser: change grams, remove an item, add a missing item by search, questions shown, unknown fibre stays unknown |
+| Explicit confirmation before saving; manual entry on every failure | Browser: saving blocked until every item is matched and the box is ticked. Timeout, not-food and bad-file paths all offer "Add the food yourself". |
+| Mixed dishes, poor images, wrong matches, timeouts, duplicate submissions, corrections | Mock OpenAI modes (ok, slow, refuse, notfood, 500). A repeated request ID gives one AI call (API) and a double tap gives one request (browser). Match switching and corrections are in the browser tests. |
+| Provider mocks in CI | `tests/php/mock-openai.php`, `tests/php/mock-fdc.php`, FakeHttp in PHP unit tests |
 
-- photo picker and camera, with consent before upload;
-- server-side checks of file type and size, metadata stripped, per-user quotas and rate limits, temporary images deleted;
-- AI credentials kept on the server, with timeouts and cost controls;
-- the model suggests foods and portion ranges, which are matched to the Phase 2 food database and shown as editable ingredients and grams, with follow-up questions about oils and sauces;
-- nutrients calculated only from confirmed database entries;
-- manual entry always available.
+### Open items for Phase 5
 
-**Decision needed:** which AI vision provider (and model) to use, given cost, EU data handling and terms. Provider mocks will be used in CI.
+- Add `OPENAI_API_KEY` (secret) and optionally `OPENAI_MODEL` and `SCAN_DAILY_LIMIT` (variables). Then check `aiScan: enabled` in the deploy log and test with a real photo.
+- Complete the privacy items in `docs/PRIVACY.md` §4: OpenAI DPA, DPIA update and transfer basis.
+- Manually check the goal guidance values in `docs/FORMULAS.md`.

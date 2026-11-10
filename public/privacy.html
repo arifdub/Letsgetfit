@@ -13,13 +13,13 @@
   <main id="main" tabindex="-1">
     <p><a href="./#settings">← Back to LetsGetFit</a></p>
     <h1>Privacy notice</h1>
-    <p class="muted">Last updated 9 November 2026.</p>
+    <p class="muted">Last updated 10 November 2026.</p>
 
     <section class="card">
       <h2>In short</h2>
       <ul class="bullets">
         <li>You can use LetsGetFit without an account. Your details, food diary, workouts and weight log are then saved only in your browser, on your device.</li>
-        <li>The only thing sent to our server is the text you type into food search. It is passed to USDA FoodData Central to find foods, and it is not stored with anything about you.</li>
+        <li>The only things sent to our server are the text you type into food search and, if you choose to scan a meal, the photo you confirm. Neither is stored with anything about you.</li>
         <li>There is no advertising, analytics, tracking or third-party scripts.</li>
       </ul>
     </section>
@@ -39,6 +39,12 @@
       <h2>Food search</h2>
       <p>When you search for a food, your browser sends the search text to letsgetfit.site. Our server forwards it to <a href="https://fdc.nal.usda.gov/">USDA FoodData Central</a>, a public database run by the U.S. Department of Agriculture, and returns the results.</p>
       <p>Search text is not logged. Results are cached by the words searched for, with nothing linking them to you. To prevent abuse, your IP address is used to count searches. It is stored only as a one-way keyed hash, and those records are deleted within a day.</p>
+    </section>
+
+    <section class="card">
+      <h2>Meal photo scan (when available)</h2>
+      <p>If photo scanning is switched on and you choose to use it, the photo you select is sent to our server only after you confirm. Your browser and our server first remove location, camera and date details. Our server then sends the photo to OpenAI's API, which suggests the foods and amounts. You check and correct the suggestions, and the nutrients come from USDA FoodData Central for the foods and amounts you confirm.</p>
+      <p>We do not store the photo. The suggested foods are kept for 10 minutes so that pressing the button twice does not send the photo twice. OpenAI states that it does not use API data to train its models, and that it may keep it for up to 30 days to monitor for abuse. Do not send photos of people or anything private. You can always add food yourself instead.</p>
     </section>
 
     <section class="card">

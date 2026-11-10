@@ -46,7 +46,10 @@ Full steps: **[docs/DATABASE.md](DATABASE.md)**. Privacy launch checklist: **[do
 - **Terminal or SSH:** recommended for running migrations by hand. Migrations never run automatically on deploy.
 - **Cron Jobs (optional):** for scheduled clean-up such as expired sessions and tokens.
 
-### Phase 5: AI meal scan (planned)
+### Phase 5: AI meal scan (built, switched off)
+
+Switch it on by adding the `OPENAI_API_KEY` repository secret. Optional repository variables: `OPENAI_MODEL` (default `gpt-4o-mini`; any vision-capable model with structured outputs) and `SCAN_DAILY_LIMIT` (default 100 scans a day across the whole site). The deploy log then shows `aiScan: enabled`. If it shows `unavailable`, ask the host to enable the PHP **GD** extension. Set a monthly spending limit in the OpenAI dashboard as well.
+
 
 - **AI provider credentials** in the private config file only.
 - **Outbound HTTPS** to the provider's API host.

@@ -64,6 +64,25 @@ All must be done and signed off by the controller. The person running letsgetfit
 - [ ] Have a qualified person carry out an **EU privacy review** of the above.
 - [ ] Then set `ACCOUNTS_ENABLED=true`, run migrations, deploy, and check `/api/health.php`.
 
-## 4. Later phases
+## 4. AI meal scan (Phase 5: built, OFF until an OpenAI key is set)
 
-- **Phase 5 (AI meal scan):** photos go to an AI provider only after explicit, per-use confirmation. They are stripped of metadata, kept in a private temporary folder and deleted after processing. This needs its own DPIA update, processor DPA and transfer assessment before launch.
+| Data | Where it goes | Purpose | Retention |
+|---|---|---|---|
+| Meal photo | Browser → our server → OpenAI API (US) | Suggest foods and amounts | Our server holds it **in memory only**. PHP's temporary upload file is deleted straight away, and nothing is written to disk or logged. OpenAI states that API data is not used for training and may be kept up to 30 days for abuse monitoring. **Confirm current terms before launch.** |
+| Photo metadata (location, camera, date) | Removed twice: re-encoded in the browser, then re-encoded with GD on the server, before anything reaches OpenAI | — | Never sent |
+| Scan result (suggested foods and amounts) | Our server's private cache, keyed by a hash of IP and request ID | Lets a repeated submission return the first result without a second charge | 10 minutes |
+| IP address | Keyed hash in rate-limit files | Per-visitor quotas (5 per 10 minutes, 20 a day) and a site-wide daily cap | Under 24 hours |
+
+**Controls:**
+- The user must confirm every photo after reading where it goes; the server refuses uploads without that confirmation header.
+- Only JPEG, PNG and WebP are accepted, with size and pixel limits.
+- Users are told not to send photos of people.
+- The model is told to ignore text in the image.
+- Its output is sanitised and is never used for nutrient values.
+- The OpenAI key lives only in the private settings file.
+
+**Before switching it on**, add these to the launch checklist:
+- [ ] Sign OpenAI's data processing addendum (DPA). Record the US transfer mechanism (EU–US Data Privacy Framework or standard contractual clauses) and check the retention options, including zero data retention if available.
+- [ ] Update the DPIA: photos may show people, places or health information; the data goes to a US processor; AI output can be wrong.
+- [ ] Publish the scan section in `public/privacy.html` (already written) and confirm it matches OpenAI's current terms.
+- [ ] Set `SCAN_DAILY_LIMIT` and a monthly spending limit in the OpenAI dashboard.

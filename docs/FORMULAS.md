@@ -125,3 +125,20 @@ Imperial input is converted once on entry. Heights and weights are stored in cm 
 - **Trend value:** the mean of all readings in the 7 days up to and including each reading's date (a trailing window). Several readings on one day are averaged first.
 - **Change over time:** the difference between the latest trend value and the trend value about 28 days earlier, or the earliest one if there is none that old. It is shown only when there are at least 4 readings spanning at least 21 days. Otherwise the app explains that more data is needed, so day-to-day fluctuations are never presented as change.
 - **Limits:** a moving average lags real change by a few days and depends on how regularly you weigh. Fluid, food, salt, hormones and timing can move weight by a kilogram or more from day to day.
+
+## Goals (Phase 5)
+
+| Item | Rule | Source or basis |
+|---|---|---|
+| Healthy weight range | BMI 18.5 to 24.9 × height (m)², shown as a range, never as one "ideal" weight | CDC adult BMI categories |
+| Daily energy change | weekly rate (kg) × 7,700 kcal/kg ÷ 7 | Common approximation for the energy in body fat. It overestimates long-term change because energy expenditure adapts (Hall KD et al., *Lancet* 2011;378:826–837). The app tells users to review their trend after 3–4 weeks. |
+| Loss rate | Options 0.25, 0.5, 0.75 and 1 kg a week; only those at or below 1% of current weight are offered (at least 0.25) | Widely used public-health guidance of about 0.5–1 kg a week |
+| Gain rate | 0.25 or 0.5 kg a week; surplus capped at 500 kcal a day | Conservative cap to limit fat gain |
+| Energy floor | Never below 1,200 kcal (female coefficient) or 1,500 kcal (male coefficient). If the deficit would cross it, the floor is used and the slower expected pace is shown. | Commonly cited minimums for unsupervised low-energy diets |
+| Eligibility | Same as the calculator (20–78, not pregnant or breastfeeding). No loss goal when BMI is under 18.5. No loss target below BMI 18.5, and no gain target above BMI 24.9. | Safeguards |
+
+**Source check status:** the 7,700 kcal/kg factor, the rate guidance and the floors are widely published approximations. They **need a manual check** against HSE, NHS and NIH guidance before launch. Tests pin the values (`tests/unit/goals.test.mjs`). The goal card also points to Bodywhys (bodywhys.ie), the Irish eating-disorder support charity.
+
+## Meal photo scan (Phase 5)
+
+The AI model returns only food names, search terms, a gram estimate with a low–high range, raw or cooked, a confidence level, and questions about things a photo cannot show. **It is not asked for nutrients.** Every nutrient value comes from USDA FoodData Central for the match and grams the user confirms, so the usual rules apply: unknown stays unknown, and entries store snapshots.
