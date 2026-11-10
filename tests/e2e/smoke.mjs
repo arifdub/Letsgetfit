@@ -90,7 +90,7 @@ console.log(`Smoke tests against ${BASE}`);
 await check('loads without errors and shows only working navigation', async () => {
   const { page, context, errors } = await freshPage();
   const nav = await page.locator('.primary-nav a:visible').allTextContents();
-  assert.deepEqual(nav.map((t) => t.trim()), ['Overview', 'Food', 'Workouts', 'Progress', 'Settings']);
+  assert.deepEqual(nav.map((t) => t.trim()), ['Dashboard', 'Food', 'Workouts', 'Progress', 'Settings']);
   assert.equal(await page.locator('#profile-form').isVisible(), true);
   assert.equal(await page.getAttribute('html', 'lang'), 'en-IE');
   // Without the account API (static host, or accounts switched off) there is no account tab or link.
@@ -348,6 +348,7 @@ await check('keyboard: skip link, visible focus and nav by keyboard', async () =
   await page.keyboard.press('Tab'); // brand
   await page.keyboard.press('Tab'); // Overview
   await page.keyboard.press('Tab'); // Food
+  await page.keyboard.press('Tab'); // Quick add
   await page.keyboard.press('Tab'); // Workouts
   assert.equal(await page.evaluate(() => document.activeElement.dataset.route), 'workouts');
   await page.keyboard.press('Enter');
@@ -372,11 +373,39 @@ await check('mobile layout has no horizontal scroll and a bottom nav', async () 
       const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
       assert.ok(overflow <= 0, `${name} ${route} overflows by ${overflow}px`);
     }
-    const nav = await page.locator('.primary-nav').boundingBox();
+    const nav = await page.locator('.nav-main').boundingBox();
     const vh = page.viewportSize().height;
     assert.ok(nav.y + nav.height >= vh - 1, `${name}: nav should sit at the bottom`);
     await context.close();
   }
+});
+
+await check('quick add opens today’s food and exercise forms and updates the Dashboard', async () => {
+  const { page, context } = await freshPage();
+  await page.locator('#daily-dashboard').getByText('0 kcal', { exact: true }).waitFor();
+  await page.click('#quick-add');
+  await page.selectOption('#quick-meal', 'lunch');
+  await page.getByRole('button', { name: 'Log food' }).click();
+  await page.waitForSelector('#food-panel:not([hidden])');
+  await page.click('[data-tab="new"]');
+  await page.fill('#cf-name', 'Quick add toast');
+  await page.fill('#cf-n_energy', '250');
+  await page.click('#custom-food-form button[type="submit"]');
+  assert.equal(await page.inputValue('#amount-meal'), 'lunch');
+  await page.fill('#amount-g', '100');
+  await page.click('#amount-save');
+  await page.waitForSelector('[data-meal="lunch"] .entry');
+
+  await page.click('#quick-add');
+  await page.locator('#quick-add-dialog').getByRole('button', { name: 'Log exercise' }).click();
+  await page.waitForFunction(() => document.activeElement.id === 'workout-activity');
+  await page.selectOption('#workout-activity', 'walk-brisk');
+  await page.fill('#workout-duration', '20');
+  await page.click('#workout-submit');
+  await page.click('.primary-nav [data-route="overview"]');
+  await page.locator('.dashboard-activity').getByText('20 min').waitFor();
+  assert.match(await page.locator('.dashboard-meals').getByText('Lunch').locator('..').textContent(), /250 kcal/);
+  await context.close();
 });
 
 await check('reduced motion disables animation', async () => {

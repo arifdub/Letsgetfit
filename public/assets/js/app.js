@@ -5,13 +5,15 @@ import { Store } from './storage/store.js';
 import { initOverview } from './ui/overview.js';
 import { initWorkouts, initWeights } from './ui/logs.js';
 import { initSettings } from './ui/settings.js';
+import { MEALS } from './lib/food.js';
+import { initDashboard } from './ui/dashboard.js';
 import { initFood } from './ui/food.js';
 import { initTraining } from './ui/training.js';
 import { initProgress } from './ui/progress.js';
 import { initAccount } from './ui/account.js';
 import { initAdmin } from './ui/admin.js';
 import { captureInstallPrompt, registerServiceWorker, initAppSettings } from './ui/app-settings.js';
-import { $, $$, toast } from './ui/dom.js';
+import { $, $$, h, toast } from './ui/dom.js';
 
 export const APP_VERSION = '0.6.0';
 const ROUTES = ['overview', 'food', 'workouts', 'progress', 'account', 'admin', 'settings'];
@@ -52,16 +54,44 @@ function start() {
 
   $('#app-version').textContent = APP_VERSION;
   initOverview(store);
-  initFood(store);
+  const food = initFood(store);
   const training = initTraining(store);
-  initWorkouts(store, { onEditSession: (entry) => training.editSession(entry) });
+  const workouts = initWorkouts(store, { onEditSession: (entry) => training.editSession(entry) });
   initProgress(store);
   initWeights(store);
   initSettings(store);
   initAppSettings();
   const account = initAccount(store);
   const adminPanel = initAdmin(account);
+  function navigate(route) {
+    if (location.hash !== `#${route}`) history.pushState(null, '', `#${route}`);
+    showRoute(route, { focus: false });
+  }
+  function addFood(meal) {
+    navigate('food');
+    food.openToday(meal);
+  }
+
+  function addExercise() {
+    navigate('workouts');
+    void workouts.openQuickAdd();
+  }
+
+  const dashboard = initDashboard(store, addFood, addExercise);
+  const quickAdd = $('#quick-add-dialog');
+  const mealPicker = $('#quick-meal');
+  mealPicker.replaceChildren(...MEALS.map((meal) => h('option', { value: meal.id }, meal.label)));
+  $('#quick-add').addEventListener('click', () => {
+    quickAdd.returnValue = '';
+    quickAdd.showModal();
+  });
+  quickAdd.addEventListener('close', () => {
+    if (quickAdd.returnValue === 'food') addFood(mealPicker.value);
+    if (quickAdd.returnValue === 'exercise') addExercise();
+  });
+
   onRoute = (route) => {
+    if (route === 'overview') dashboard.render();
     if (route === 'admin') adminPanel.show();
   };
 

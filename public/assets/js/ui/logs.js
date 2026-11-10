@@ -190,7 +190,26 @@ export function initWorkouts(store, { onEditSession } = {}) {
 
   store.subscribe(render);
   render();
-  return { render, resetForm };
+  async function openQuickAdd() {
+    if (editingId) {
+      const discard = await confirmAction({
+        title: 'Leave workout editing?',
+        body: 'Unsaved changes to this workout will be discarded.',
+        confirmLabel: 'Start new activity',
+      });
+      if (!discard) {
+        form.elements.activityId.focus();
+        return;
+      }
+      resetForm();
+    }
+    setDateLimits(form.elements.localDate);
+    form.elements.localDate.value = toLocalDateString();
+    form.scrollIntoView({ block: 'start' });
+    form.elements.activityId.focus({ preventScroll: true });
+  }
+
+  return { render, resetForm, openQuickAdd };
 }
 
 /* ---------------- Weight log ---------------- */
