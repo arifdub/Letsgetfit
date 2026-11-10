@@ -297,6 +297,11 @@ deploy_private() {
     run_lftp "cd \"$target\"" "cd .." "mkdir -p -f $private_root/app/vendor $private_root/config" \
       "mirror --reverse --no-perms --ignore-time --parallel=8 --verbose=1 --exclude-glob .git/ --exclude-glob .github/ --exclude-glob '*.md' --exclude-glob '*/*/language/' --exclude-glob '*/*/docs/' --exclude-glob '*/*/tests/' --exclude-glob '*/*/examples/' --exclude-glob '*/*/fixtures/' --exclude-glob '*/*/scripts/' \"$SERVER_SOURCE/vendor\" $private_root/app/vendor" \
       || fail "could not upload the server packages to $private_root/app/vendor."
+    # Composer's own loader files can change without changing size, so always compare them by time.
+    run_lftp "cd \"$target\"" "cd .." \
+      "mirror --reverse --no-perms --parallel=4 --verbose=1 \"$SERVER_SOURCE/vendor/composer\" $private_root/app/vendor/composer" \
+      "put -O $private_root/app/vendor \"$SERVER_SOURCE/vendor/autoload.php\"" \
+      || fail "could not upload the Composer loader files."
   fi
   # Our own code: always compared by time and size, so every change is uploaded.
   run_lftp "cd \"$target\"" "cd .." "mkdir -p -f $private_root/app $private_root/config" \

@@ -15,6 +15,7 @@
         "platform-check": true,
         "allow-plugins": {
             "php-http/discovery": false
-        }
+        },
+        "autoloader-suffix": "LetsGetFit"
     }
 }

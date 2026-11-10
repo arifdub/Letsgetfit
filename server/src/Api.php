@@ -300,11 +300,29 @@ final class Api
             'gd' => ImageProcessor::available(),
             'pdoMysql' => extension_loaded('pdo_mysql'),
             // ?packages=1 loads the Composer packages, to prove they work on this PHP version.
-            'packages' => ($_GET['packages'] ?? '') === '1' ? [
-                'mailer' => class_exists(\PHPMailer\PHPMailer\PHPMailer::class),
-                'claude' => class_exists(\Anthropic\Client::class) && class_exists(\GuzzleHttp\Client::class),
-            ] : null,
+            'packages' => ($_GET['packages'] ?? '') === '1' ? self::packageCheck() : null,
         ], ['Cache-Control' => 'no-store']];
+    }
+
+    /** Loads the Composer packages and reports what failed: exception type and file:line only. */
+    private static function packageCheck(): array
+    {
+        $out = [];
+        foreach (['mailer' => [\PHPMailer\PHPMailer\PHPMailer::class], 'claude' => [\GuzzleHttp\Client::class, \Anthropic\Client::class]] as $name => $classes) {
+            try {
+                $ok = true;
+                foreach ($classes as $class) {
+                    $ok = $ok && class_exists($class);
+                }
+                $out[$name] = $ok;
+            } catch (\Throwable $e) {
+                $file = str_replace('\\', '/', $e->getFile());
+                $out[$name] = false;
+                $out[$name . 'Error'] = $e::class . ' at ' . (preg_match('#/(vendor/.+|src/.+)$#', $file, $m) ? $m[1] : basename($file)) . ':' . $e->getLine();
+            }
+        }
+
+        return $out;
     }
 
     /**
