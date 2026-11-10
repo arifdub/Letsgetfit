@@ -19,6 +19,23 @@ function env(string $name, string $default = ''): string
 
     return is_string($v) && $v !== '' ? $v : $default;
 }
+/**
+ * Clean up a mail server name typed with extras: "https://mail.example.com:465/ " becomes
+ * ["mail.example.com", 465]. Returns [host, port or null], or null if it is still not a host name.
+ */
+function smtp_host(string $raw): ?array
+{
+    $h = strtolower(trim($raw));
+    $h = (string) preg_replace('#^[a-z]+://#', '', $h);
+    $h = rtrim((string) preg_replace('#/.*$#', '', $h), '.');
+    $port = null;
+    if (preg_match('/^(.+):(\d{2,5})$/', $h, $m)) {
+        [$h, $port] = [$m[1], (int) $m[2]];
+    }
+
+    return preg_match('/^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/', $h) || filter_var($h, FILTER_VALIDATE_IP) ? [$h, $port] : null;
+}
+
 function fail(string $message): never
 {
     fwrite(STDERR, $message . PHP_EOL);
@@ -78,13 +95,17 @@ if (in_array(strtolower(trim(env('ACCOUNTS_ENABLED'))), ['true', 'yes', 'on', '1
     if (!preg_match('/^[A-Za-z0-9.-]{1,253}$/', $dbHost) || !ctype_digit($dbPort) || !preg_match('/^[A-Za-z0-9_]{1,64}$/', $dbName)) {
         fail('DB_HOST, DB_PORT or DB_NAME has an unexpected format.');
     }
-    $mailFrom = env('MAIL_FROM');
+    $mailFrom = trim(env('MAIL_FROM'));
     if (filter_var($mailFrom, FILTER_VALIDATE_EMAIL) === false) {
         fail('MAIL_FROM must be an email address.');
     }
-    $secure = env('SMTP_SECURE', 'tls');
+    $secure = strtolower(trim(env('SMTP_SECURE', 'tls')));
     if (!in_array($secure, ['tls', 'ssl'], true)) {
         fail('SMTP_SECURE must be tls or ssl.');
+    }
+    $smtp = smtp_host(env('SMTP_HOST'));
+    if ($smtp === null) {
+        fail('SMTP_HOST must be just the mail server name, for example mail.letsgetfit.site (no https://, spaces or port).');
     }
     $adminEmail = strtolower(trim(env('ADMIN_EMAIL')));
     if ($adminEmail !== '' && filter_var($adminEmail, FILTER_VALIDATE_EMAIL) === false) {
@@ -103,10 +124,10 @@ if (in_array(strtolower(trim(env('ACCOUNTS_ENABLED'))), ['true', 'yes', 'on', '1
         'mail_transport' => 'smtp',
         'mail_from' => $mailFrom,
         'mail_from_name' => env('MAIL_FROM_NAME', 'LetsGetFit'),
-        'smtp_host' => env('SMTP_HOST'),
-        'smtp_port' => (int) env('SMTP_PORT', $secure === 'ssl' ? '465' : '587'),
+        'smtp_host' => $smtp[0],
+        'smtp_port' => (int) env('SMTP_PORT', (string) ($smtp[1] ?? ($secure === 'ssl' ? 465 : 587))),
         'smtp_secure' => $secure,
-        'smtp_user' => env('SMTP_USER', $mailFrom),
+        'smtp_user' => trim(env('SMTP_USER', $mailFrom)),
         'smtp_password' => env('SMTP_PASSWORD'),
         'cookie_secure' => str_starts_with($siteUrl, 'https://'),
     ];

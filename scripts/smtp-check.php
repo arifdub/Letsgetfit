@@ -13,15 +13,26 @@ use LetsGetFit\Mail\SmtpMailer;
 use PHPMailer\PHPMailer\PHPMailer;
 
 $env = static fn (string $n, string $d = ''): string => is_string(getenv($n)) && getenv($n) !== '' ? (string) getenv($n) : $d;
-$host = $env('SMTP_HOST');
+$rawHost = strtolower(trim($env('SMTP_HOST')));
+$rawHost = (string) preg_replace('#^[a-z]+://#', '', $rawHost);
+$rawHost = rtrim((string) preg_replace('#/.*$#', '', $rawHost), '.');
+$hostPort = null;
+if (preg_match('/^(.+):(\d{2,5})$/', $rawHost, $m)) {
+    [$rawHost, $hostPort] = [$m[1], $m[2]];
+}
+$host = $rawHost;
+if (!preg_match('/^[a-z0-9.-]+$/', $host)) {
+    echo "smtp-check: SMTP_HOST is not a valid server name after removing https://, spaces and port. Set it to just the name, e.g. mail.letsgetfit.site.\n";
+    exit(1);
+}
 $password = $env('SMTP_PASSWORD');
-$user = $env('SMTP_USER', $env('MAIL_FROM'));
+$user = trim($env('SMTP_USER', $env('MAIL_FROM')));
 if ($host === '' || $password === '' || $user === '') {
     echo "smtp-check: SMTP_HOST, SMTP_PASSWORD and SMTP_USER (or MAIL_FROM) are needed.\n";
     exit(1);
 }
-$secure = $env('SMTP_SECURE', 'tls') === 'ssl' ? 'ssl' : 'tls';
-$port = (int) $env('SMTP_PORT', $secure === 'ssl' ? '465' : '587');
+$secure = strtolower(trim($env('SMTP_SECURE', 'tls'))) === 'ssl' ? 'ssl' : 'tls';
+$port = (int) $env('SMTP_PORT', $hostPort ?? ($secure === 'ssl' ? '465' : '587'));
 
 $scrub = static fn (string $s): string => trim(str_replace([$password, $user], ['[password]', '[username]'], preg_replace('/\s+/', ' ', $s) ?? ''));
 
