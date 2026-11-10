@@ -33,6 +33,16 @@ final class FakeHttp implements HttpClient
 
         return $this->next;
     }
+
+    public function post(string $url, array $headers, string $body, int $connectTimeout, int $timeout): HttpResponse
+    {
+        $this->calls[] = ['url' => $url, 'headers' => $headers, 'body' => $body, 'timeouts' => [$connectTimeout, $timeout]];
+        if ($this->next instanceof HttpException) {
+            throw $this->next;
+        }
+
+        return $this->next;
+    }
 }
 
 function fixture(): string

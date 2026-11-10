@@ -49,6 +49,18 @@ final class Config
             'cookie_name' => '__Host-lgf_session',
             'cookie_secure' => true,
             'session_days' => 30,
+
+            // ---- Phase 5: AI meal scan (off unless an OpenAI API key is set) ----
+            'openai_api_key' => '',
+            'openai_base_url' => 'https://api.openai.com/v1',
+            'openai_model' => 'gpt-4o-mini',     // any vision-capable chat model with structured outputs
+            'openai_image_detail' => 'low',       // 'low' keeps cost per photo small and predictable
+            'openai_max_output_tokens' => 900,
+            'scan_timeout_seconds' => 30,
+            'scan_max_upload_bytes' => 8000000,
+            'scan_per_visitor_per_10min' => 5,
+            'scan_per_visitor_per_day' => 20,
+            'scan_daily_limit' => 100,             // whole site, rolling 24 hours: caps spending
         ];
         $file = $privateDir . '/config/app.php';
         $loaded = [];

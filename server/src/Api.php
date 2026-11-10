@@ -11,6 +11,9 @@ use LetsGetFit\Http\CurlHttpClient;
 use LetsGetFit\Mail\Mailer;
 use LetsGetFit\Mail\OutboxMailer;
 use LetsGetFit\Mail\SmtpMailer;
+use LetsGetFit\Scan\ImageProcessor;
+use LetsGetFit\Scan\OpenAiVision;
+use LetsGetFit\Scan\ScanController;
 
 /** Wires the endpoints together and writes JSON responses. Called from public/api/*.php. */
 final class Api
@@ -21,6 +24,12 @@ final class Api
             $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
             if ($endpoint === 'account') {
                 [$status, $body, $headers] = self::account(Config::load($privateDir));
+                self::send($status, $body, $headers);
+
+                return;
+            }
+            if ($endpoint === 'scan') {
+                [$status, $body, $headers] = self::scan(Config::load($privateDir))->handle($_SERVER, $_FILES);
                 self::send($status, $body, $headers);
 
                 return;
@@ -84,6 +93,23 @@ final class Api
         return $controller->handle($_SERVER, $_GET, (string) file_get_contents('php://input'));
     }
 
+    public static function scan(Config $config): ScanController
+    {
+        $storage = $config->string('storage_dir');
+        $secret = $config->string('hash_secret') !== '' ? $config->string('hash_secret') : hash('sha256', $config->string('openai_api_key') . __DIR__);
+        $http = new CurlHttpClient();
+
+        return new ScanController(
+            new OpenAiVision($http, $config),
+            new FoodDataCentral($http, $config),
+            new ImageProcessor(max(100_000, $config->int('scan_max_upload_bytes'))),
+            new RateLimiter($storage . '/ratelimit', $secret),
+            new FileCache($storage . '/scan-results', 600),
+            $config,
+            $storage . '/locks',
+        );
+    }
+
     public static function mailer(Config $config): Mailer
     {
         return $config->string('mail_transport') === 'smtp'
@@ -109,6 +135,8 @@ final class Api
             'storageWritable' => $storageOk,
             'foodSearch' => $foodSearch,
             'accounts' => $config->bool('accounts_enabled') ? 'enabled' : 'disabled',
+            'aiScan' => trim($config->string('openai_api_key')) === '' ? 'disabled' : (ImageProcessor::available() && $curl ? 'enabled' : 'unavailable'),
+            'gd' => ImageProcessor::available(),
             'pdoMysql' => extension_loaded('pdo_mysql'),
         ], ['Cache-Control' => 'no-store']];
     }

@@ -11,6 +11,17 @@ final class CurlHttpClient implements HttpClient
 
     public function get(string $url, array $headers, int $connectTimeout, int $timeout): HttpResponse
     {
+        return $this->request('GET', $url, $headers, null, $connectTimeout, $timeout);
+    }
+
+    public function post(string $url, array $headers, string $body, int $connectTimeout, int $timeout): HttpResponse
+    {
+        return $this->request('POST', $url, $headers, $body, $connectTimeout, $timeout);
+    }
+
+    /** @param array<string, string> $headers */
+    private function request(string $method, string $url, array $headers, ?string $payload, int $connectTimeout, int $timeout): HttpResponse
+    {
         if (!function_exists('curl_init')) {
             throw new HttpException(HttpException::NETWORK, 'The PHP cURL extension is not enabled.');
         }
@@ -22,7 +33,7 @@ final class CurlHttpClient implements HttpClient
             $headerLines[] = $name . ': ' . $value;
         }
         curl_setopt_array($ch, [
-            CURLOPT_HTTPGET => true,
+            CURLOPT_CUSTOMREQUEST => $method,
             CURLOPT_HTTPHEADER => $headerLines,
             CURLOPT_CONNECTTIMEOUT => $connectTimeout,
             CURLOPT_TIMEOUT => $timeout,
@@ -42,6 +53,9 @@ final class CurlHttpClient implements HttpClient
                 return strlen($chunk);
             },
         ]);
+        if ($payload !== null) {
+            curl_setopt($ch, CURLOPT_POSTFIELDS, $payload);
+        }
         $ok = curl_exec($ch);
         $errno = curl_errno($ch);
         $status = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
