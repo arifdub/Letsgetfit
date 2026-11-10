@@ -49,9 +49,13 @@ function badges(food) {
 
 export function diaryEnergyReference(p) {
   if (!p || !checkEligibility(p).eligible || !getActivityLevel(p.activityLevel)) return null;
-  if (p.goal && p.goal.type !== 'maintain') return { kcal: planGoal(p, p.goal).allowedKcal, goal: true };
+  if (p.goal && p.goal.type !== 'maintain') {
+    const plan = planGoal(p, p.goal);
+    return { kcal: plan.allowedKcal, maintenance: roundEnergyForDisplay(plan.maintenanceKcal), goal: true };
+  }
   const ree = mifflinStJeor({ weightKg: p.weightKg, heightCm: p.heightCm, ageYears: p.ageYears, sex: p.sex });
-  return { kcal: roundEnergyForDisplay(maintenanceEnergy(ree, p.activityLevel)), goal: false };
+  const maintenance = roundEnergyForDisplay(maintenanceEnergy(ree, p.activityLevel));
+  return { kcal: maintenance, maintenance, goal: false };
 }
 
 export function diaryMacros({ totals, missing, count }) {

@@ -73,6 +73,7 @@ export function initOverview(store) {
       return;
     }
     clearFormErrors(form, summary);
+    const firstSetup = !store.profile;
     const { units, ...profile } = result.profile;
     try {
       store.setUnits(units);
@@ -84,7 +85,13 @@ export function initOverview(store) {
     editing = false;
     render();
     toast('Your estimates are ready.');
-    $('#overview-title').focus();
+    const goalDetails = firstSetup ? $('#goal-card details') : null;
+    if (goalDetails) {
+      goalDetails.open = true;
+      goalDetails.querySelector('summary').focus();
+    } else {
+      $('#overview-title').focus();
+    }
   });
 
   cancel.addEventListener('click', () => {

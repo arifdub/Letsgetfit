@@ -843,3 +843,23 @@ main { padding-top: clamp(1.25rem, 4vw, 2.5rem); }
 @media (min-width: 640px) {
   .dashboard-log-grid { display: grid; grid-template-columns: 2fr 3fr; gap: 1rem; align-items: start; }
 }
+
+/* Calorie budget and apple progress */
+.dashboard-apple { width: clamp(5.25rem, 25vw, 9rem); flex: 0 0 auto; }
+.calorie-apple { display: block; width: 100%; }
+.calorie-apple__outline { fill: none; stroke: var(--text-muted); stroke-width: 4; stroke-linejoin: round; }
+.calorie-apple__leaf { fill: var(--success-border); stroke: var(--success-border); stroke-width: 3; stroke-linecap: round; }
+.calorie-apple__fill { fill: var(--success-border); }
+.calorie-apple--over .calorie-apple__fill, .calorie-apple--over .calorie-apple__leaf { fill: var(--danger); }
+.calorie-apple--over .calorie-apple__outline, .calorie-apple--over .calorie-apple__leaf { stroke: var(--danger); }
+.dashboard-calories-over { color: var(--danger); }
+.dashboard-budget { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.5rem; margin: 0 0 0.75rem; }
+.dashboard-set-goal { margin-top: 0.75rem; }
+.dashboard-budget div { border-block-start: 1px solid var(--border); padding-block-start: 0.5rem; }
+.dashboard-budget dt { font-size: 0.78rem; color: var(--text-muted); }
+.dashboard-budget dd { margin: 0; font-weight: 750; }
+.dashboard-exercise-credit { grid-column: 1 / -1; margin-top: 0.75rem; border-top: 1px solid var(--border); padding-top: 0.75rem; }
+@media (forced-colors: active) {
+  .calorie-apple__outline { stroke: CanvasText; }
+  .calorie-apple__fill, .calorie-apple--over .calorie-apple__fill { fill: Highlight; }
+}
