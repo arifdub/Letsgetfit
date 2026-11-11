@@ -9,8 +9,9 @@ import { getExercise, SAFETY_NOTE } from '../lib/exercises.js';
 import { getDemo, sideAt } from '../lib/demos.js';
 import {
   planItem, cleanItem, cleanSettings, buildSegments, exerciseCount, createSession, advance, skip, end, snapshot, summarise, sessionMinutes,
-  toDraftExercises, PACES, LIMITS, DEFAULT_SETTINGS,
+  toDraftExercises, currentItem, jumpTo, repeatSet, retarget, spokenCue, PACES, LIMITS, DEFAULT_SETTINGS,
 } from '../lib/workout-player.js';
+import { createSound } from './sound.js';
 import { createStage } from './figure.js';
 import { $, h, formatNumber, confirmAction } from './dom.js';
 
@@ -18,6 +19,7 @@ const SETTINGS_KEY = 'letsgetfit.player';
 const INTRO_SEC = 2; // getting into a hold is shown over the last two seconds before it starts
 const CUE_SEC = 6;
 const MAX_TICK_MS = 1000;
+const REST_MUSIC_LEVEL = 0.4;
 
 export function loadPlayerSettings() {
   try {
@@ -83,6 +85,7 @@ export function initPlayer({ onLog }) {
   let items = [];
   let run = null; // the session in progress: { session, paused, frame, last, ... }
   let wakeLock = null;
+  const sound = createSound();
 
   const numberField = (id, label, value, [min, max], onChange, hint) => {
     const input = h('input', { id, class: 'input input--short', type: 'number', inputmode: 'numeric', min, max, step: 1, value });
@@ -129,6 +132,8 @@ export function initPlayer({ onLog }) {
       );
     };
     renderFields();
+    const here = h('button', { type: 'button', class: 'button button--small', dataset: { startAt: String(i) }, 'aria-label': `Start with ${item.name}` }, i === 0 ? 'Start' : 'Start here');
+    here.addEventListener('click', () => begin(i));
     return h(
       'li',
       { class: 'setup-item', dataset: { exercise: item.exerciseId } },
@@ -139,31 +144,37 @@ export function initPlayer({ onLog }) {
         h('p', { class: 'setup-item__name' }, item.name),
         h('p', { class: 'muted small' }, demo.sides === 'alternate' ? 'Alternates sides. ' : demo.sides === 'each' ? 'One side, then the other. ' : '', ex.cues[0]),
         fields,
+        items.length > 1 ? h('div', { class: 'setup-item__start' }, here) : null,
       ),
     );
   }
 
   function renderSetup() {
     const start = h('button', { type: 'button', class: 'button button--primary button--large', id: 'player-begin' }, 'Start workout');
-    start.addEventListener('click', begin);
+    start.addEventListener('click', () => begin(0));
     const cancel = h('button', { type: 'button', class: 'button button--ghost', id: 'player-cancel' }, 'Cancel');
     cancel.addEventListener('click', close);
     const pace = h('select', { id: 'setup-pace', class: 'input' }, PACES.map((p) => h('option', { value: p.id, selected: settings.pace === p.id }, p.label)));
     pace.addEventListener('change', () => (settings.pace = pace.value));
     const still = h('input', { type: 'checkbox', id: 'setup-still', checked: settings.still });
     still.addEventListener('change', () => (settings.still = still.checked));
+    const music = h('input', { type: 'checkbox', id: 'setup-music', checked: settings.music });
+    music.addEventListener('change', () => (settings.music = music.checked));
+    const voice = h('input', { type: 'checkbox', id: 'setup-voice', checked: settings.voice });
+    voice.addEventListener('change', () => (settings.voice = voice.checked));
     dialog.replaceChildren(
       h(
         'div',
         { class: 'player__setup' },
         h('h2', { id: 'player-title', tabindex: '-1' }, context.title),
-        h('p', { class: 'muted' }, 'Check the plan and change anything you like. The cartoon shows each movement, and counts time or repetitions with you.'),
+        h('p', { class: 'muted' }, items.length > 1 ? 'Check the plan and change anything you like. Start from the top, or tap “Start here” on any exercise. During the workout you can move to any exercise, repeat a set or change the repetitions.' : 'Set the repetitions or time, then start. During the workout you can repeat a set or change the repetitions.'),
         h('ol', { class: 'setup-list', 'aria-label': 'Exercises in this workout' }, items.map(setupRow)),
         h(
           'div',
           { class: 'setup-options' },
           numberField('setup-rest', 'Rest between sets and exercises (seconds)', settings.restSec, LIMITS.restSec, (v) => (settings.restSec = v)),
           h('div', { class: 'field' }, h('label', { for: 'setup-pace' }, 'Demo pace for repetitions'), h('p', { class: 'hint' }, 'Guided reps count the cartoon’s repetitions, so pick a pace you can follow comfortably.'), pace),
+          h('div', { class: 'field' }, h('label', { class: 'checkbox' }, music, 'Play background music'), h('label', { class: 'checkbox' }, voice, 'Voice: count repetitions and call out what is next'), h('p', { class: 'hint' }, 'Sound follows your phone’s volume. On an iPhone, switch off silent mode to hear the music.')),
           h('div', { class: 'field' }, h('label', { class: 'checkbox' }, still, 'Show still poses instead of animation'), h('p', { class: 'hint' }, 'Shows the start and end positions without movement. Timers and counters work the same way.')),
         ),
         h('p', { class: 'muted small' }, SAFETY_NOTE),
@@ -174,7 +185,7 @@ export function initPlayer({ onLog }) {
 
   /* ---------------- Player ---------------- */
 
-  function begin() {
+  function begin(startItem = 0) {
     items = items.map(cleanItem);
     settings = cleanSettings(settings);
     savePlayerSettings(settings);
@@ -190,10 +201,35 @@ export function initPlayer({ onLog }) {
       cue: h('p', { class: 'player__cue', id: 'player-cue' }),
       live: h('p', { class: 'visually-hidden', 'aria-live': 'polite', id: 'player-live' }),
       pause: h('button', { type: 'button', class: 'player__button player__button--main', id: 'player-pause' }, 'Pause'),
-      skip: h('button', { type: 'button', class: 'player__button', id: 'player-skip' }, 'Skip'),
-      end: h('button', { type: 'button', class: 'player__button', id: 'player-end' }, 'End workout'),
+      prev: h('button', { type: 'button', class: 'player__button', id: 'player-prev' }, 'Previous'),
+      next: h('button', { type: 'button', class: 'player__button', id: 'player-next' }, 'Next'),
+      list: h('button', { type: 'button', class: 'player__button player__button--small', id: 'player-list', 'aria-haspopup': 'true', 'aria-label': 'Exercise list: go to any exercise, repeat a set or change the repetitions' }, 'List'),
+      skip: h('button', { type: 'button', class: 'player__button player__button--small', id: 'player-skip' }, 'Skip'),
+      mute: h('button', { type: 'button', class: 'player__button player__button--small', id: 'player-mute', 'aria-pressed': 'false', 'aria-label': 'Mute sound' }, 'Sound'),
+      end: h('button', { type: 'button', class: 'player__button player__button--small', id: 'player-end', 'aria-label': 'End workout' }, 'End'),
+      sheet: h('div', { class: 'player__sheet', id: 'player-sheet', hidden: true }),
     };
-    run = { session: createSession(segments), total: exerciseCount(segments), paused: false, frame: 0, last: 0, stage, ui, drawn: null };
+    run = { session: createSession(segments), total: exerciseCount(segments), paused: false, frame: 0, last: 0, stage, ui, drawn: null, mark: null, sheetWasPaused: false };
+    // Sound has to start from this tap: browsers do not let a page start it later on its own.
+    sound.setMuted(false);
+    sound.start({ music: settings.music, voice: settings.voice });
+    ui.mute.hidden = !sound.available;
+    if (startItem > 0) jumpTo(run.session, startItem);
+    ui.prev.addEventListener('click', () => go(Math.max(0, currentItem(run.session) - 1)));
+    ui.next.addEventListener('click', () => {
+      const at = currentItem(run.session);
+      if (at + 1 < items.length) go(at + 1);
+      else {
+        end(run.session);
+        render();
+      }
+    });
+    ui.list.addEventListener('click', openSheet);
+    ui.mute.addEventListener('click', () => {
+      sound.setMuted(!sound.muted);
+      ui.mute.textContent = sound.muted ? 'Muted' : 'Sound';
+      ui.mute.setAttribute('aria-pressed', String(sound.muted));
+    });
     ui.pause.addEventListener('click', () => setPaused(!run.paused));
     ui.skip.addEventListener('click', () => {
       skip(run.session);
@@ -213,7 +249,8 @@ export function initPlayer({ onLog }) {
         { class: 'player__run' },
         h('header', { class: 'player__top' }, ui.count, ui.title, ui.sub),
         h('div', { class: 'player__stage' }, stage.svg, ui.big),
-        h('footer', { class: 'player__bottom' }, ui.counter, ui.label, ui.cue, h('div', { class: 'player__controls' }, ui.skip, ui.pause, ui.end), ui.live),
+        h('footer', { class: 'player__bottom' }, ui.counter, ui.label, ui.cue, h('div', { class: 'player__controls' }, ui.prev, ui.pause, ui.next), h('div', { class: 'player__controls player__controls--more' }, ui.list, ui.skip, ui.mute, ui.end), ui.live),
+        ui.sheet,
       ),
     );
     dialog.classList.add('player--running');
@@ -236,9 +273,81 @@ export function initPlayer({ onLog }) {
     if (run && !run.session.finished) run.frame = requestAnimationFrame(tick);
   }
 
+  /** Move to an exercise by its place in the plan, with a fresh 3-2-1. */
+  function go(item) {
+    if (!run) return;
+    jumpTo(run.session, item);
+    closeSheet(false);
+    if (run.paused) setPaused(false);
+    else render();
+  }
+
+  /* The list of exercises: move to any of them, repeat the set, or change the repetitions. */
+  function openSheet() {
+    if (!run) return;
+    run.sheetWasPaused = run.paused;
+    if (!run.paused) setPaused(true);
+    const { session, ui } = run;
+    const at = currentItem(session);
+    const onWork = session.segments[session.index].type === 'work';
+    const rows = items.map((item, i) => {
+      // What is still planned for this exercise (it may have been changed during the workout).
+      const seg = session.segments.find((s, si) => s.type === 'work' && s.item === i && (i !== at || si >= session.index)) ?? session.segments.find((s) => s.type === 'work' && s.item === i);
+      const unit = seg.mode === 'reps' ? 'reps' : 'seconds';
+      const jump = h('button', { type: 'button', class: 'button button--small', dataset: { jump: String(i) }, 'aria-label': `${i === at ? 'Start again:' : 'Go to'} ${item.name}` }, i === at ? 'Start again' : 'Go');
+      jump.addEventListener('click', () => go(i));
+      const row = h(
+        'li',
+        { class: `sheet-item${i === at ? ' sheet-item--current' : ''}`, dataset: { item: String(i) }, 'aria-current': i === at ? 'true' : null },
+        h('div', { class: 'sheet-item__head' }, h('p', { class: 'sheet-item__name' }, `${i + 1}. ${item.name}`), jump),
+        h('p', { class: 'muted small', dataset: { plan: '' } }, `${seg.sets} × ${formatNumber(seg.target)} ${unit}${item.perSide ? ' each side' : ''}`),
+      );
+      if (i === at) {
+        const step = seg.mode === 'reps' ? 1 : 5;
+        const value = h('output', { class: 'sheet-stepper__value', id: 'sheet-target', 'aria-live': 'polite' }, `${formatNumber(seg.target)} ${unit}`);
+        const change = (by) => {
+          const now = retarget(session, i, seg.target + by);
+          if (now === null) return;
+          value.textContent = `${formatNumber(now)} ${unit}`;
+          row.querySelector('[data-plan]').textContent = `${seg.sets} × ${formatNumber(now)} ${unit}${item.perSide ? ' each side' : ''}`;
+          // The label under the counter shows the target, so it is redrawn when the sheet closes.
+          ui.count.dataset.segment = '';
+        };
+        const less = h('button', { type: 'button', class: 'button button--small sheet-stepper__button', id: 'sheet-less', 'aria-label': `Fewer ${unit}` }, '−');
+        const more = h('button', { type: 'button', class: 'button button--small sheet-stepper__button', id: 'sheet-more', 'aria-label': `More ${unit}` }, '+');
+        less.addEventListener('click', () => change(-step));
+        more.addEventListener('click', () => change(step));
+        const again = h('button', { type: 'button', class: 'button button--small', id: 'sheet-repeat', disabled: !onWork }, 'Repeat this set');
+        again.addEventListener('click', () => {
+          repeatSet(session);
+          run.mark = null;
+          closeSheet(true);
+        });
+        row.append(h('div', { class: 'sheet-stepper' }, h('span', { class: 'sheet-stepper__label' }, seg.mode === 'reps' ? 'Repetitions' : 'Time'), less, value, more), h('div', { class: 'form__actions' }, again));
+      }
+      return row;
+    });
+    const done = h('button', { type: 'button', class: 'button button--primary', id: 'sheet-close' }, 'Back to the workout');
+    done.addEventListener('click', () => closeSheet(true));
+    ui.sheet.replaceChildren(h('h3', { id: 'sheet-title', tabindex: '-1' }, 'Exercises'), h('p', { class: 'muted small' }, 'The workout is paused. Go to any exercise, or change the one you are on.'), h('ol', { class: 'sheet-list' }, rows), h('div', { class: 'form__actions' }, done));
+    ui.sheet.hidden = false;
+    ui.sheet.querySelector('#sheet-title').focus();
+  }
+
+  function closeSheet(resume) {
+    if (!run || run.ui.sheet.hidden) return;
+    run.ui.sheet.hidden = true;
+    run.ui.sheet.replaceChildren();
+    if (resume && !run.sheetWasPaused) setPaused(false);
+    else render();
+    run?.ui.list.focus();
+  }
+
   function setPaused(paused) {
     if (!run || run.session.finished) return;
     run.paused = paused;
+    if (paused) sound.pause();
+    else sound.resume();
     run.last = performance.now();
     run.ui.pause.textContent = paused ? 'Resume' : 'Pause';
     dialog.classList.toggle('player--paused', paused);
@@ -267,6 +376,16 @@ export function initPlayer({ onLog }) {
       return;
     }
     const { ui, stage } = run;
+    const voice = spokenCue(run.mark, run.session, s);
+    run.mark = voice.mark;
+    if (voice.say && !run.paused) {
+      sound.say(voice.say);
+      dialog.dataset.said = voice.say;
+    }
+    sound.setLevel(s.type === 'rest' ? REST_MUSIC_LEVEL : 1);
+    const at = currentItem(run.session);
+    const nextLabel = at + 1 < items.length ? 'Next' : 'Finish';
+    if (ui.next.textContent !== nextLabel) ui.next.textContent = nextLabel;
     const segmentKey = `${run.session.index}`;
     const changed = ui.count.dataset.segment !== segmentKey;
     ui.count.dataset.segment = segmentKey;
@@ -302,7 +421,7 @@ export function initPlayer({ onLog }) {
     const demo = showDemo(next, `${segmentKey}-next`);
     if (!settings.still) {
       if (demo.kind === 'hold') stage.draw(1 - Math.min(1, s.untilStartSec / INTRO_SEC), { intro: true });
-      else stage.draw(s.type === 'rest' ? s.phase : 0);
+      else stage.draw(0); // resting or getting ready: the figure waits in the start position
     }
     stage.setProgress(s.type === 'rest' ? s.progress : 0);
     const big = s.type === 'rest' ? '' : String(s.remainingSec);
@@ -340,6 +459,9 @@ export function initPlayer({ onLog }) {
     const { session } = run;
     cancelAnimationFrame(run.frame);
     releaseWakeLock();
+    const farewell = spokenCue(run.mark, session);
+    if (farewell.say && session.log.length) sound.say(farewell.say);
+    sound.stop();
     const summary = summarise(session, items);
     const minutes = sessionMinutes(session);
     const result = { title: context.title, routineId: context.routineId, durationMin: minutes, exercises: toDraftExercises(summary) };
@@ -393,6 +515,7 @@ export function initPlayer({ onLog }) {
   function close() {
     if (run) cancelAnimationFrame(run.frame);
     run = null;
+    sound.stop();
     releaseWakeLock();
     dialog.classList.remove('player--running', 'player--paused');
     delete dialog.dataset.phase;
@@ -404,7 +527,8 @@ export function initPlayer({ onLog }) {
   dialog.addEventListener('cancel', (event) => {
     if (run) {
       event.preventDefault();
-      setPaused(true);
+      if (!run.ui.sheet.hidden) closeSheet(false);
+      else setPaused(true);
     }
   });
   dialog.addEventListener('close', () => {

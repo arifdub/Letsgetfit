@@ -1177,6 +1177,91 @@ await check('guided workout: setup, countdown, guided reps, pause, background, r
   await context.close();
 });
 
+await check('guided workout: the figure waits during rest; voice cues; start from any exercise; previous, next, exercise list, change reps and repeat a set', async () => {
+  const { page, context, errors } = await freshPage();
+  await page.clock.install();
+  await page.goto(`${BASE}#workouts`);
+  await page.click('[data-play-routine="no-equipment-three"]');
+  await page.waitForSelector('#player-begin');
+  assert.deepEqual([await page.isChecked('#setup-music'), await page.isChecked('#setup-voice')], [true, true]);
+  await page.fill('#setup-reps-0', '1');
+  await page.fill('#setup-sets-0', '2');
+  await page.fill('#setup-rest', '6');
+  await page.locator('#setup-rest').blur();
+  await page.click('#player-begin');
+  const text = (id) => page.textContent(`#player-${id}`);
+  const said = () => page.getAttribute('#workout-player', 'data-said');
+  const frame = () => page.getAttribute('#workout-player svg.stage svg:not([display="none"])', 'viewBox');
+  assert.equal(await said(), 'Get ready. Bodyweight squat.');
+  await page.clock.runFor(1100);
+  assert.equal(await said(), '2');
+  await page.clock.runFor(2000);
+  assert.equal(await said(), 'Go!');
+  // During the exercise the picture moves; during the rest it waits in the start position.
+  const moving = await frame();
+  await page.clock.runFor(1200);
+  assert.notEqual(await frame(), moving, 'animated while working');
+  await page.clock.runFor(2000);
+  assert.equal(await text('title'), 'Rest');
+  assert.equal(await said(), 'Rest. Next, Bodyweight squat.');
+  const resting = await frame();
+  await page.clock.runFor(1500);
+  assert.equal(await frame(), resting, 'still while resting');
+  assert.equal(resting.split(' ').slice(0, 2).join(' '), '0 0', 'the start position');
+  // Sound can be switched off from the player.
+  assert.equal(await page.isVisible('#player-mute'), true);
+  await page.click('#player-mute');
+  assert.deepEqual([await text('mute'), await page.getAttribute('#player-mute', 'aria-pressed')], ['Muted', 'true']);
+  // Next and Previous move between exercises, each with a fresh 3-2-1.
+  await page.click('#player-next');
+  assert.deepEqual([await text('count'), await text('title'), await text('big'), await text('next')], ['2 of 3', 'Push-up', '3', 'Next']);
+  await page.click('#player-next');
+  assert.deepEqual([await text('count'), await text('title'), await text('next')], ['3 of 3', 'Hindu push-up', 'Finish']);
+  await page.click('#player-prev');
+  assert.deepEqual([await text('count'), await text('title')], ['2 of 3', 'Push-up']);
+  await page.clock.runFor(3100 + 3100);
+  assert.deepEqual([await text('counter'), await text('label')], ['1', 'Guided reps · of 6']);
+  // The exercise list pauses the workout; change the repetitions and repeat the set.
+  await page.click('#player-list');
+  await page.waitForSelector('#player-sheet:not([hidden])');
+  assert.equal(await page.locator('#workout-player.player--paused').count(), 1);
+  assert.equal(await page.locator('.sheet-item').count(), 3);
+  assert.equal(await page.getAttribute('.sheet-item--current', 'data-item'), '1');
+  await page.click('#sheet-more');
+  await page.click('#sheet-more');
+  assert.equal(await page.textContent('#sheet-target'), '8 reps');
+  await page.click('#sheet-less');
+  assert.equal(await page.textContent('#sheet-target'), '7 reps');
+  assert.match(await page.textContent('.sheet-item--current'), /3 × 7 reps/);
+  await page.click('#sheet-repeat');
+  assert.equal(await page.isHidden('#player-sheet'), true);
+  assert.equal(await page.locator('#workout-player.player--paused').count(), 0, 'running again');
+  assert.deepEqual([await text('counter'), await text('label'), await text('sub')], ['0', 'Guided reps · of 7', 'Set 1 of 3']);
+  // Go to any exercise from the list.
+  await page.click('#player-list');
+  await page.click('[data-jump="0"]');
+  assert.equal(await page.isHidden('#player-sheet'), true);
+  assert.deepEqual([await text('count'), await text('title'), await text('big')], ['1 of 3', 'Bodyweight squat', '3']);
+  await page.click('#player-end');
+  await page.click('#confirm-ok');
+  await page.waitForSelector('#player-close');
+  // What was finished is kept: one squat set from the start of the workout.
+  assert.match(await page.textContent('#player-summary'), /Bodyweight squat 1 rep/);
+  await page.click('#player-close');
+  // Starting from a later exercise in the setup list.
+  await page.click('[data-play-routine="no-equipment-three"]');
+  await page.uncheck('#setup-music');
+  await page.uncheck('#setup-voice');
+  await page.click('[data-start-at="2"]');
+  assert.deepEqual([await text('count'), await text('title'), await text('big')], ['3 of 3', 'Hindu push-up', '3']);
+  assert.equal(await page.isHidden('#player-mute'), true, 'no sound button when sound is off');
+  assert.equal((await page.evaluate(() => JSON.parse(localStorage.getItem('letsgetfit.player')))).music, false, 'the choice is remembered');
+  await page.click('#player-next');
+  await page.waitForSelector('#player-close');
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
 await check('guided workout: library preview, one-sided hold with switch, still poses, ending early', async () => {
   const { page, context, errors } = await freshPage();
   await page.clock.install();

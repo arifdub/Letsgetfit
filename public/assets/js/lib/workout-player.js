@@ -14,7 +14,7 @@ export const PACES = Object.freeze([
   { id: 'normal', label: 'Normal', factor: 1 },
   { id: 'fast', label: 'Faster', factor: 0.75 },
 ]);
-export const DEFAULT_SETTINGS = Object.freeze({ restSec: 30, pace: 'normal', still: false });
+export const DEFAULT_SETTINGS = Object.freeze({ restSec: 30, pace: 'normal', still: false, music: true, voice: true });
 
 const clampInt = (value, [min, max], fallback) => {
   const n = Math.round(Number(value));
@@ -72,6 +72,9 @@ export function cleanSettings(settings = {}) {
     restSec: clampInt(settings.restSec, LIMITS.restSec, DEFAULT_SETTINGS.restSec),
     pace: PACES.some((p) => p.id === settings.pace) ? settings.pace : DEFAULT_SETTINGS.pace,
     still: settings.still === true,
+    // Sound is on unless it was switched off.
+    music: settings.music !== false,
+    voice: settings.voice !== false,
   };
 }
 
@@ -156,6 +159,92 @@ export function skip(session) {
   session.index += 1;
   session.elapsedMs = 0;
   if (session.index >= session.segments.length) session.finished = true;
+}
+
+/** Index of the first work segment of an exercise (by its place in the plan), or -1. */
+const firstWorkOf = (session, item) => session.segments.findIndex((s) => s.type === 'work' && s.item === item);
+
+/** The exercise on screen: the one being done, or the one a pause leads to. */
+export function currentItem(session) {
+  if (session.finished) return -1;
+  const seg = session.segments[session.index];
+  return seg.type === 'work' ? seg.item : (seg.next?.item ?? -1);
+}
+
+/**
+ * Go straight to an exercise (any one, forwards or back), keeping what was done so far.
+ * It starts with a short 3-2-1, from its first set.
+ */
+export function jumpTo(session, item) {
+  if (session.finished) return false;
+  let target = firstWorkOf(session, item);
+  if (target < 0) return false;
+  record(session, false);
+  const before = session.segments[target - 1];
+  if (before?.type === 'countdown') target -= 1;
+  else session.segments.splice(target, 0, { type: 'countdown', sec: COUNTDOWN_SEC, next: session.segments[target] });
+  session.index = target;
+  session.elapsedMs = 0;
+  return true;
+}
+
+/** Start the set on screen again from zero. What was done of it so far is not kept. */
+export function repeatSet(session) {
+  if (session.finished) return false;
+  if (session.segments[session.index].type !== 'work') return false;
+  session.elapsedMs = 0;
+  return true;
+}
+
+/**
+ * Change the repetitions (or seconds) of an exercise for the set in progress and the sets still
+ * to come. Sets already finished keep what was done.
+ */
+export function retarget(session, item, value) {
+  if (session.finished) return null;
+  let applied = null;
+  session.segments.forEach((seg, i) => {
+    if (seg.type !== 'work' || seg.item !== item || i < session.index) return;
+    const target = clampInt(value, seg.mode === 'reps' ? LIMITS.reps : LIMITS.seconds, seg.target);
+    seg.target = target;
+    seg.sec = seg.mode === 'reps' ? target * seg.cycleSec : target;
+    applied = target;
+  });
+  return applied;
+}
+
+const KEEP_GOING = Object.freeze(['Keep going!', 'You’ve got this!', 'Nice and steady.', 'Stay strong!', 'Looking good!']);
+
+/**
+ * What the voice says at this instant, if anything: the 3-2-1, each finished repetition, time
+ * calls and a few encouraging words. `prev` is what was returned as `mark` last time.
+ * @returns {{ say: string|null, mark: { index: number, reps: number|null, remainingSec: number } }}
+ */
+export function spokenCue(prev, session, s = snapshot(session)) {
+  if (s.type === 'finished') return { say: prev?.index === -1 ? null : 'Workout complete. Well done!', mark: { index: -1, reps: null, remainingSec: 0 } };
+  const mark = { index: session.index, reps: s.reps ?? null, remainingSec: s.remainingSec };
+  const fresh = !prev || prev.index !== mark.index;
+  let say = null;
+  if (s.type === 'work') {
+    const { mode, target } = s.seg;
+    if (fresh) say = 'Go!';
+    else if (mode === 'reps' && s.reps > prev.reps) {
+      if (s.reps >= target) say = `${s.reps}. Done!`;
+      else if (s.reps === target - 1 && target > 2) say = `${s.reps}. Last one!`;
+      else if (s.reps * 2 === target && target >= 6) say = `${s.reps}. Halfway!`;
+      else if (s.reps % 5 === 0 && target - s.reps > 2) say = `${s.reps}. ${KEEP_GOING[(s.reps / 5) % KEEP_GOING.length]}`;
+      else say = String(s.reps);
+    } else if (mode === 'time' && s.remainingSec !== prev.remainingSec) {
+      const left = s.remainingSec;
+      if (left <= 3 && left > 0) say = String(left);
+      else if (left === 10 && target >= 20) say = 'Ten seconds.';
+      else if (left * 2 === target && target >= 20) say = 'Halfway!';
+      else if (left > 10 && left % 15 === 0 && left !== target) say = KEEP_GOING[(left / 15) % KEEP_GOING.length];
+    }
+  } else if (fresh) {
+    say = s.type === 'rest' ? `Rest. Next, ${s.next.name}.` : s.type === 'switch' ? 'Switch sides.' : `Get ready. ${s.next.name}.`;
+  } else if (s.remainingSec !== prev.remainingSec && s.remainingSec <= 3 && s.remainingSec > 0) say = String(s.remainingSec);
+  return { say, mark };
 }
 
 /** Stop the whole session now, keeping what was done. */
