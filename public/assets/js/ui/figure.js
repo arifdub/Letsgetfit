@@ -34,7 +34,6 @@ const setDot = (node, p) => {
   node.setAttribute('cx', n(p[0]));
   node.setAttribute('cy', n(p[1]));
 };
-const SPRITE_H = 160; // a picture frame's height on the stage; its corners stay inside the circle
 
 /** One frame of a picture sheet: a nested <svg> whose viewBox is moved from frame to frame. */
 function createSprite(parent) {
@@ -64,7 +63,7 @@ function createSprite(parent) {
       const width = (height * sprite.frameW) / sprite.frameH;
       view.setAttribute('viewBox', `${(i % sprite.cols) * sprite.frameW} ${Math.floor(i / sprite.cols) * sprite.frameH} ${sprite.frameW} ${sprite.frameH}`);
       view.setAttribute('x', n(cx - width / 2));
-      view.setAttribute('y', n(CENTRE - height / 2 - height * 0.025)); // feet are wider than the head, so sit a little high
+      view.setAttribute('y', n(CENTRE - height / 2 - height * (sprite.lift ?? 0)));
       view.setAttribute('width', n(width));
       view.setAttribute('height', n(height));
       view.removeAttribute('display');
@@ -272,7 +271,7 @@ export function createStage({ ring = false, label = '' } = {}) {
       if (!demo) return;
       if (pictured()) {
         hideBodies();
-        sprites[0].show(demo.sprite, intro ? 0 : phase, CENTRE, SPRITE_H);
+        sprites[0].show(demo.sprite, intro ? 0 : phase, CENTRE, demo.sprite.stageH);
         sprites[1].hide();
         return;
       }
@@ -288,8 +287,11 @@ export function createStage({ ring = false, label = '' } = {}) {
       if (pictured()) {
         hideBodies();
         hideSprites();
+        const { stageH, frameW, frameH } = demo.sprite;
         const gap = phases.length === 1 ? 0 : 38;
-        phases.slice(0, 2).forEach((phase, i) => sprites[i].show(demo.sprite, phase, CENTRE + (i === 0 ? -gap : gap), phases.length === 1 ? SPRITE_H : 118));
+        // Two pictures side by side: each at most 76 wide.
+        const small = Math.min(stageH * 0.74, (76 * frameH) / frameW);
+        phases.slice(0, 2).forEach((phase, i) => sprites[i].show(demo.sprite, phase, CENTRE + (i === 0 ? -gap : gap), phases.length === 1 ? stageH : small));
         return;
       }
       hideSprites();

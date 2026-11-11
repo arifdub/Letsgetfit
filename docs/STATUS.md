@@ -116,7 +116,7 @@
 
 ## Guided workout player
 
-- Every catalogue exercise (32) has a looping demonstration keyed by exercise ID (`lib/demos.js`, drawn by `ui/figure.js` from the skeleton in `lib/rig.js`). The bodyweight squat plays the owner's own character animation from a picture sheet (`assets/img/squat-sheet.webp`, 24 frames of one repetition), with the drawn figure as the fallback.
+- Every catalogue exercise (32) has a looping demonstration keyed by exercise ID (`lib/demos.js`, drawn by `ui/figure.js` from the skeleton in `lib/rig.js`). The bodyweight squat and the push-up play the owner's own character animation from picture sheets (`assets/img/squat-sheet.webp`, `pushup-sheet.webp`; 24 frames of one repetition each), with the drawn figure as the fallback.
 - **Start workout** on a routine, or **Start this exercise** in the library, opens a setup screen: Reps or Time where both make sense, sets, rest, demo pace and a still-poses option (on by default with `prefers-reduced-motion`).
 - The player (`lib/workout-player.js`, `ui/player.js`) runs from one clock: 3–2–1 countdown, work, side switches, rest with a preview of the next exercise, and a summary that opens the existing session logger. It pauses when the page is hidden. Repetitions are "guided reps": they count the demonstration's completed repetitions, not the user's movement.
 - Verified: unit tests (`demos.test.mjs`, `workout-player.test.mjs`) and Chromium browser tests with a phone viewport. Not verified: Safari/WebKit and real devices.

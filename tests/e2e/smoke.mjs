@@ -1164,7 +1164,9 @@ await check('guided workout: library preview, one-sided hold with switch, still 
   assert.equal(await page.isChecked('#setup-still'), true);
   await page.click('#player-begin');
   await page.clock.runFor(3200);
-  assert.equal(await visibleFigures(), 2);
+  // The push-up is shown as pictures: two frames side by side, and no drawn figure.
+  assert.equal(await visibleFigures(), 0);
+  assert.equal(await page.locator('#workout-player svg.stage svg:not([display="none"]) > image').count(), 2);
   await page.click('#player-end');
   await page.click('#confirm-ok');
   await page.waitForSelector('#player-close');

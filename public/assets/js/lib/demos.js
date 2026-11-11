@@ -206,7 +206,7 @@ export const DEMOS = Object.freeze({
   'bodyweight-squat': rep([F(0, frontSquatTop), F(0.45, frontSquatBottom), F(0.62, frontSquatBottom), F(1, frontSquatTop)], {
     view: 'front',
     peak: 13 / 24,
-    sprite: Object.freeze({ src: 'assets/img/squat-sheet.webp', frames: 24, cols: 6, rows: 4, frameW: 200, frameH: 480 }),
+    sprite: Object.freeze({ src: 'assets/img/squat-sheet.webp', frames: 24, cols: 6, rows: 4, frameW: 200, frameH: 480, stageH: 160, lift: 0.025 }), // feet are wider than the head, so it sits a little high
   }),
   'chair-squat': rep([F(0, chairSeated), F(0.15, chairLean), F(0.5, chairStand), F(0.6, chairStand), F(0.88, chairLean), F(1, chairSeated)], {
     cycle: 3.6,
@@ -254,7 +254,10 @@ export const DEMOS = Object.freeze({
   'calf-raise': rep([F(0, calfDown), F(0.4, calfUp), F(0.6, calfUp), F(1, calfDown)], { cycle: 2.6, props: () => [line(147, 30, 147, GROUND, 'prop', 4)] }),
 
   // ---- Push ----
-  'push-up': rep([F(0, pushTop), F(0.45, pushBottom), F(0.55, pushBottom), F(1, pushTop)]),
+  'push-up': rep([F(0, pushTop), F(0.45, pushBottom), F(0.62, pushBottom), F(1, pushTop)], {
+    peak: 13 / 24,
+    sprite: Object.freeze({ src: 'assets/img/pushup-sheet.webp', frames: 24, cols: 6, rows: 4, frameW: 400, frameH: 330, stageH: 108 }),
+  }),
   'incline-push-up': rep([F(0, inclineTop), F(0.45, inclineBottom), F(0.55, inclineBottom), F(1, inclineTop)], {
     props: () => [rect(126, 118, 48, 7, 'prop', 2), line(168, 125, 168, GROUND, 'prop', 4), line(132, 125, 132, GROUND, 'prop-faint', 3)],
   }),
