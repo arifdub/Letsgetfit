@@ -30,6 +30,7 @@ Everything is stored in the browser's `localStorage`. Nothing is sent to a serve
 
 ## What Phase 2 adds
 
+- **Dashboard:** today at a glance. A calorie apple fills with the share of the daily budget logged (empty at the start of the day, red with the amount over once the budget is passed), and macro tiles show grams, percent of a guide amount and what is left.
 - **Food:** a diary by date with breakfast, lunch, dinner and snacks; amounts in grams; edit and delete; and daily totals. Totals cover energy, protein, carbohydrate, fat, fibre, iron, calcium, potassium, vitamin D and B12.
 - **Unknown, not zero:** missing nutrient values show as *unknown*, and totals that include unknowns are flagged as incomplete.
 - **Adding foods:**
