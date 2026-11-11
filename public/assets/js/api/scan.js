@@ -1,6 +1,6 @@
 // Client for /api/scan.php. The photo goes to our server, which removes metadata and asks
-// OpenAI or Claude (as set by the admin) for food suggestions; nutrients are always taken from
-// the food database.
+// OpenAI or Claude (as set by the admin) for food suggestions; nutrients are taken from
+// the food database, or from a labelled AI estimate for a food the database does not have.
 
 import { foodFromApi } from '../lib/food.js';
 

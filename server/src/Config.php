@@ -59,7 +59,7 @@ final class Config
             'openai_base_url' => 'https://api.openai.com/v1',
             'openai_model' => 'gpt-4o-mini',     // any vision-capable chat model with structured outputs
             'openai_image_detail' => 'low',       // 'low' keeps cost per photo small and predictable
-            'openai_max_output_tokens' => 900,
+            'openai_max_output_tokens' => 1500,
             'scan_timeout_seconds' => 30,
             'scan_max_upload_bytes' => 8000000,
             'scan_per_visitor_per_10min' => 5,

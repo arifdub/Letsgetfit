@@ -1283,7 +1283,7 @@ await check('scan: consent first, one request on double tap, review, corrections
   // Saving is blocked until every item has a match and the user confirms.
   await page.click('#scan-save');
   await page.waitForSelector('#scan-error');
-  assert.match(await page.textContent('#scan-error'), /match for every item/);
+  assert.match(await page.textContent('#scan-error'), /No nutrition values were found for: Mystery dip/);
   // An item with no match offers a search, filled in with its name; a result becomes its match.
   assert.equal(await page.isVisible('#scan-find-1'), true);
   assert.equal(await page.inputValue('#scan-find-1'), 'Mystery dip');
@@ -1316,11 +1316,60 @@ await check('scan: consent first, one request on double tap, review, corrections
   assert.equal(apple.entryMethod, 'photo-scan');
   const juice = stored.diary.find((e) => e.sourceId === '2345678');
   assert.equal(juice.nutrients.fibre, null, 'unknown stays unknown');
+  // The whole meal is also kept in My foods as one food, for next time.
+  const kept = stored.foods.find((f) => f.servingOptions[0]?.label === '1 meal');
+  assert.equal(kept.source, 'custom');
+  assert.match(kept.name, /^Apple slices, /);
+  assert.equal(kept.servingOptions[0].grams, 250);
+  assert.equal(Math.round((kept.per100g.energy * 250) / 100), 124, 'same energy as the two entries together');
+  assert.equal(stored.foods.length, 3, 'the two foods and the meal');
   assert.match(await page.textContent('#day-totals'), /124 kcal/);
   // Only counts are reported, to compare AI providers: amount changed, dip removed, juice added.
   await page.waitForFunction(() => true);
   for (let i = 0; i < 20 && !feedbackBodies.length; i += 1) await new Promise((r) => setTimeout(r, 50));
   assert.deepEqual(feedbackBodies, [{ requestId: requests[0]['x-request-id'], kept: 0, changed: 1, removed: 1, added: 1 }]);
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+await check('scan: a food with no database match uses a labelled AI estimate, and the saved meal can be added again from My foods', async () => {
+  const { page, context, errors } = await freshPage({}, { aiScan: 'enabled' });
+  const granola = { source: 'ai-estimate', sourceId: 'ai-0123456789abcdef', name: 'Homemade granola', brand: null, kind: 'generic', dataType: 'AI estimate', preparation: 'unspecified', basis: '100g', per100g: { energy: 450, protein: 10, carbohydrate: 62, fat: 17, fibre: 7, iron: null, calcium: null, potassium: null, vitaminD: null, vitaminB12: null }, nutrientUnits: API_FOODS[0].nutrientUnits, servingOptions: [] };
+  await page.route('**/api/scan.php', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ...SCAN_REPLY, items: [SCAN_REPLY.items[0], { name: 'Homemade granola', gramsEstimate: 60, gramsLow: 40, gramsHigh: 80, confidence: 'medium', candidates: [granola] }] }) }));
+  await page.route('**/api/scan-feedback.php', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: '{"ok":true}' }));
+  await openScan(page);
+  await page.setInputFiles('#scan-file', { name: 'meal.jpg', mimeType: 'image/jpeg', buffer: MEAL_JPEG });
+  await page.click('#scan-analyse');
+  await page.waitForSelector('.scan-item');
+  // The estimate is chosen already and clearly marked; nothing has to be searched for.
+  assert.match(await page.textContent('#scan-match-1 option:checked'), /Homemade granola \(AI estimate\) · 450 kcal\/100 g/);
+  assert.match(await page.textContent('#scan-estimate-note'), /rough AI figures/);
+  assert.match(await page.textContent('#scan-totals'), /food database and AI estimates/);
+  // 120 g apple at 52 kcal + 60 g granola at 450 kcal = 62.4 + 270.
+  assert.match(await page.textContent('#scan-totals [data-nutrient="energy"]'), /^332 kcal$/);
+  assert.equal(await page.isChecked('#scan-keep'), true);
+  assert.equal(await page.inputValue('#scan-keep-name'), 'Apple slices, Homemade granola');
+  await page.fill('#scan-keep-name', 'Apple and granola bowl');
+  await page.check('#scan-confirm');
+  await page.click('#scan-save');
+  await page.waitForSelector('[data-meal="lunch"] .entry');
+  assert.equal(await page.locator('#scan-error').count(), 0);
+  let stored = await page.evaluate(() => JSON.parse(localStorage.getItem('letsgetfit.data')));
+  const entry = stored.diary.find((e) => e.name === 'Homemade granola (AI estimate)');
+  assert.deepEqual([entry.source, entry.servingG, entry.nutrients.energy, entry.nutrients.iron], ['custom', 60, 270, null]);
+  assert.ok(!('estimated' in stored.foods.find((f) => f.name === 'Homemade granola (AI estimate)')));
+  const bowl = stored.foods.find((f) => f.name === 'Apple and granola bowl');
+  assert.deepEqual(bowl.servingOptions, [{ label: '1 meal', grams: 180 }]);
+  // Next time: pick the meal from My foods, with no scan and no search.
+  await page.click('[data-add-meal="dinner"]');
+  await page.click('#food-panel button:has-text("My foods")');
+  await page.click('#food-panel .food-option:has-text("Apple and granola bowl")');
+  await page.waitForSelector('#food-panel form');
+  await page.click('#food-panel form button[type="submit"]');
+  await page.waitForSelector('[data-meal="dinner"] .entry');
+  stored = await page.evaluate(() => JSON.parse(localStorage.getItem('letsgetfit.data')));
+  const again = stored.diary.find((e) => e.meal === 'dinner');
+  assert.deepEqual([again.name, again.servingG, Math.round(again.nutrients.energy)], ['Apple and granola bowl', 180, 332]);
   assert.deepEqual(errors, []);
   await context.close();
 });
@@ -1335,7 +1384,7 @@ await check('describe: type what you ate, review database matches, save with dat
   await openScan(page);
   await page.click('[data-tab="describe"]');
   await page.waitForSelector('#describe-text');
-  assert.match(await page.textContent('#scan-consent'), /Anthropic \(Claude\).*Nutrients always come from the USDA food database/s);
+  assert.match(await page.textContent('#scan-consent'), /Anthropic \(Claude\).*Nutrients come from the USDA food database.*rough AI estimate/s);
   await page.click('#describe-go');
   await page.waitForSelector('#scan-error');
   assert.equal(bodies.length, 0, 'nothing sent for an empty description');

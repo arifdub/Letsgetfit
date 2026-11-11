@@ -116,6 +116,7 @@ export function validateCustomFood(raw) {
  */
 export function foodFromApi(result) {
   if (!result || typeof result !== 'object') return null;
+  if (result.source === 'ai-estimate') return foodFromEstimate(result);
   const source = result.source === 'usda-fdc' ? 'usda-fdc' : null;
   const sourceId = typeof result.sourceId === 'string' && /^[A-Za-z0-9_-]{1,40}$/.test(result.sourceId) ? result.sourceId : null;
   const name = cleanText(result.name, 160);
@@ -140,6 +141,73 @@ export function foodFromApi(result) {
     basis: result.basis === '100ml' ? '100ml' : '100g',
     servingOptions,
   };
+}
+
+export const ESTIMATE_SUFFIX = ' (AI estimate)';
+
+/**
+ * A food the database could not match, with the AI's rough per-100 g values. It is kept as one
+ * of the person's own foods, with "(AI estimate)" in its name so it is never mistaken for
+ * database data, and `estimated: true` while it is on screen.
+ */
+export function foodFromEstimate(result) {
+  const base = cleanText(result?.name, 80 - ESTIMATE_SUFFIX.length);
+  if (base.length < 1) return null;
+  const all = normaliseNutrients(result.per100g, result.nutrientUnits);
+  const per100g = Object.fromEntries(NUTRIENTS.map((n) => [n.key, null]));
+  for (const key of ['energy', 'protein', 'carbohydrate', 'fat', 'fibre']) per100g[key] = all[key] ?? null;
+  if (per100g.energy === null) return null;
+  return {
+    source: 'custom',
+    sourceId: null,
+    name: base.endsWith(ESTIMATE_SUFFIX.trim()) ? base : base + ESTIMATE_SUFFIX,
+    brand: null,
+    kind: 'generic',
+    preparation: Object.hasOwn(PREPARATIONS, result.preparation) ? result.preparation : 'unspecified',
+    per100g,
+    nutrientUnits: { ...CANONICAL_UNITS },
+    basis: '100g',
+    servingOptions: [],
+    estimated: true,
+  };
+}
+
+/**
+ * Several foods and amounts as one food for "My foods", so the same meal can be added again in
+ * one step. Values are per 100 g of the whole meal; a nutrient is unknown only if no part has it.
+ * @param {string} name
+ * @param {{ food: object, grams: number }[]} parts
+ */
+export function combineFoods(name, parts) {
+  const clean = cleanText(name, 80);
+  const used = parts.filter((p) => p?.food && Number.isFinite(p.grams) && p.grams > 0);
+  const total = used.reduce((s, p) => s + p.grams, 0);
+  if (clean.length < 2 || !used.length || total < SERVING_LIMITS.min || total > SERVING_LIMITS.max) return null;
+  const per100g = {};
+  for (const n of NUTRIENTS) {
+    const known = used.filter((p) => Number.isFinite(p.food.per100g?.[n.key]));
+    per100g[n.key] = known.length ? Math.round((known.reduce((s, p) => s + (p.food.per100g[n.key] * p.grams) / 100, 0) / total) * 100 * 100) / 100 : null;
+  }
+  return {
+    source: 'custom',
+    sourceId: null,
+    name: clean,
+    brand: null,
+    kind: 'generic',
+    preparation: 'unspecified',
+    per100g,
+    nutrientUnits: { ...CANONICAL_UNITS },
+    basis: '100g',
+    servingOptions: [{ label: '1 meal', grams: Math.round(total * 10) / 10 }],
+  };
+}
+
+/** A default name for a saved meal: its foods, shortened. */
+export function mealName(names) {
+  const parts = names.map((n) => cleanText(n, 80).replace(ESTIMATE_SUFFIX, '')).filter(Boolean);
+  let out = parts.slice(0, 4).join(', ');
+  if (parts.length > 4) out += ' and more';
+  return out.length > 80 ? `${out.slice(0, 77).trim()}…` : out;
 }
 
 export function validateDiaryEntry(raw, today = toLocalDateString()) {

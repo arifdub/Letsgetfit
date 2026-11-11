@@ -9,6 +9,8 @@ import {
   CANONICAL_UNITS,
 } from '../../public/assets/js/lib/nutrients.js';
 import {
+  combineFoods,
+  mealName,
   validateCustomFood,
   validateDiaryEntry,
   buildDiaryEntry,
@@ -193,4 +195,31 @@ test('raw / cooked detection and name normalisation', () => {
   assert.equal(detectPreparation('Potatoes, boiled'), 'cooked');
   assert.equal(detectPreparation('Cheddar cheese'), 'unspecified');
   assert.equal(normaliseName('  Crème   Fraîche! '), 'creme fraiche');
+});
+
+test('AI estimate from the server becomes a clearly named own food with only the five estimated nutrients', () => {
+  const food = foodFromApi({ source: 'ai-estimate', sourceId: 'ai-0123456789abcdef', name: 'Homemade granola', preparation: 'cooked', per100g: { energy: 450, protein: 10, carbohydrate: 62, fat: 17, fibre: 7, iron: 99 } });
+  assert.deepEqual([food.source, food.sourceId, food.name, food.preparation, food.estimated], ['custom', null, 'Homemade granola (AI estimate)', 'cooked', true]);
+  assert.deepEqual([food.per100g.energy, food.per100g.fibre, food.per100g.iron], [450, 7, null]);
+  assert.equal(foodFromApi({ source: 'ai-estimate', name: 'x', per100g: { protein: 3 } }), null, 'no energy, no estimate');
+  assert.equal(foodFromApi({ source: 'ai-estimate', name: 'x', per100g: { energy: 5000 } }), null, 'implausible energy');
+  assert.equal(foodFromApi({ source: 'ai-estimate', name: '', per100g: { energy: 50 } }), null);
+  assert.ok(foodFromApi({ source: 'ai-estimate', name: 'n'.repeat(200), per100g: { energy: 50 } }).name.length <= 80);
+});
+
+test('a meal saved as one food: per 100 g of the whole meal, one serving is the meal', () => {
+  const apple = { per100g: { energy: 52, protein: 0.3, iron: 0.1 } };
+  const granola = { per100g: { energy: 450, protein: 10, iron: null } };
+  const meal = combineFoods('  Apple and granola  ', [{ food: apple, grams: 120 }, { food: granola, grams: 60 }]);
+  assert.deepEqual([meal.source, meal.name, meal.servingOptions], ['custom', 'Apple and granola', [{ label: '1 meal', grams: 180 }]]);
+  assert.equal(meal.per100g.energy, 184.67); // (62.4 + 270) / 180 × 100
+  assert.equal(Math.round((meal.per100g.energy * 180) / 100), 332);
+  assert.equal(meal.per100g.iron, 0.07, 'known from one part only');
+  assert.equal(meal.per100g.calcium, null, 'unknown in every part stays unknown');
+  assert.equal(combineFoods('x', [{ food: apple, grams: 100 }]), null, 'needs a name');
+  assert.equal(combineFoods('Meal', []), null);
+  assert.equal(combineFoods('Meal', [{ food: apple, grams: 6000 }]), null, 'over the serving limit');
+  assert.equal(mealName(['Plain yogurt', 'Granola (AI estimate)', 'Blueberries']), 'Plain yogurt, Granola, Blueberries');
+  assert.equal(mealName(['a', 'b', 'c', 'd', 'e']), 'a, b, c, d and more');
+  assert.ok(mealName(['x'.repeat(70), 'y'.repeat(70)]).length <= 80);
 });

@@ -141,4 +141,8 @@ Imperial input is converted once on entry. Heights and weights are stored in cm 
 
 ## Meal photo scan (Phase 5)
 
-The AI model returns only food names, search terms, a gram estimate with a low–high range, raw or cooked, a confidence level, and questions about things a photo cannot show. **It is not asked for nutrients.** Every nutrient value comes from USDA FoodData Central for the match and grams the user confirms, so the usual rules apply: unknown stays unknown, and entries store snapshots.
+The AI model returns only food names, search terms, a gram estimate with a low–high range, raw or cooked, a confidence level, and questions about things a photo cannot show. It also returns a rough per-100 g estimate of energy, protein, carbohydrate, fat and fibre. Nutrient values come from USDA FoodData Central for the match and grams the user confirms, so the usual rules apply: unknown stays unknown, and entries store snapshots.
+
+**Fallback when the database has no match.** The AI estimate is offered as the item's match, named “(AI estimate)”, only if every value passes these checks on the server (`OpenAiVision::estimate`): energy 0–900 kcal; protein, carbohydrate, fat and fibre each 0–100 g and together at most 105 g; and energy within the larger of 40 kcal or 35% of 4 × protein + 4 × carbohydrate + 9 × fat (Atwater general factors). Otherwise the item stays unmatched. Other nutrients are stored as unknown. These figures are not measured data and can be well off; the person can replace them with a database match or edit the food in My foods.
+
+**Saved meals.** A confirmed scan of two or more foods can be kept in My foods as one food: each nutrient per 100 g is the sum over the parts of (value per 100 g × grams ÷ 100), divided by the meal's total grams, × 100. A nutrient is unknown only if no part has it, so a meal total can be an under-count.

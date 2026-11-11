@@ -5,7 +5,7 @@ import { scanMeal, describeMeal, sendScanFeedback } from '../api/scan.js';
 import { searchFoods, getScanProviders } from '../api/foods.js';
 import { feedbackCounts } from '../lib/scan-feedback.js';
 import { NUTRIENTS, scaleNutrients, sumNutrients } from '../lib/nutrients.js';
-import { buildDiaryEntry, MEALS } from '../lib/food.js';
+import { buildDiaryEntry, combineFoods, mealName, MEALS } from '../lib/food.js';
 import { createId } from '../storage/store.js';
 import { h, formatNumber, toast } from './dom.js';
 
@@ -61,6 +61,8 @@ export function scanPanel({ store, meal, localDate, saveToLibrary, onSaved, onMa
   let controller = null;
   let result = null;
   let rows = []; // { name, grams, low, high, candidates, chosen (index or -1), removed }
+  let keepMeal = true; // also save the whole meal as one of My foods
+  let keepName = null; // null until the person types a name
 
   /** Replace the panel's content, skipping optional parts that are null. */
   function show(...nodes) {
@@ -101,7 +103,7 @@ export function scanPanel({ store, meal, localDate, saveToLibrary, onSaved, onMa
       h(
         'div',
         { class: 'notice-inline small', id: 'scan-consent' },
-        h('p', {}, 'When you press “Find the foods”, your description goes to our server and then to ', h('span', { id: 'describe-provider' }, providerText(providers)), ', which lists the foods and estimates the amounts in grams. Nutrients always come from the USDA food database, and you check everything before it is saved. We do not keep the description. ', h('a', { href: 'privacy.html' }, 'Privacy notice'), '.'),
+        h('p', {}, 'When you press “Find the foods”, your description goes to our server and then to ', h('span', { id: 'describe-provider' }, providerText(providers)), ', which lists the foods and estimates the amounts in grams. Nutrients come from the USDA food database (a food it does not have uses a rough AI estimate, marked as such), and you check everything before it is saved. We do not keep the description. ', h('a', { href: 'privacy.html' }, 'Privacy notice'), '.'),
       ),
       h('div', { class: 'form__actions' }, go),
       manualLink(),
@@ -222,6 +224,19 @@ export function scanPanel({ store, meal, localDate, saveToLibrary, onSaved, onMa
     const confirm = h('input', { type: 'checkbox', id: 'scan-confirm' });
     const save = h('button', { type: 'button', class: 'button button--primary', id: 'scan-save' }, `Add to ${mealLabel(meal)}`);
     save.addEventListener('click', () => saveAll(confirm, save));
+    const several = rows.filter((r) => !r.removed).length > 1;
+    const estimates = rows.some((r) => !r.removed && r.candidates[r.chosen]?.estimated);
+    // Keep the whole meal as one of My foods, to add it again without scanning or searching.
+    const keep = h('input', { type: 'checkbox', id: 'scan-keep', checked: keepMeal });
+    const keepInput = h('input', { id: 'scan-keep-name', class: 'input', maxlength: '80', autocomplete: 'off', value: keepName ?? defaultMealName() });
+    const keepField = h('div', { class: 'field', hidden: !keepMeal }, h('label', { for: 'scan-keep-name' }, 'Name in My foods'), keepInput);
+    keep.addEventListener('change', () => {
+      keepMeal = keep.checked;
+      keepField.hidden = !keepMeal;
+    });
+    keepInput.addEventListener('input', () => {
+      keepName = keepInput.value;
+    });
     show(
       isText ? h('blockquote', { class: 'describe-quote' }, description) : h('img', { src: previewUrl, alt: 'Your meal photo', class: 'scan-preview scan-preview--small' }),
       result.imageQuality === 'poor' ? h('p', { class: 'notice-inline' }, 'The photo is not very clear, so check each item carefully.') : null,
@@ -239,6 +254,10 @@ export function scanPanel({ store, meal, localDate, saveToLibrary, onSaved, onMa
           )
         : null,
       totalsHost,
+      estimates ? h('p', { class: 'notice-inline small', id: 'scan-estimate-note' }, 'Items marked “AI estimate” are not in the food database, so their energy, protein, carbohydrate, fat and fibre are rough AI figures and other nutrients are unknown. Search for a database match under the item if you want better values.') : null,
+      // A single food is saved in My foods anyway; the combined meal is for two or more.
+      several ? h('label', { class: 'checkbox checkbox--top', for: 'scan-keep' }, keep, h('span', {}, 'Also save this meal in My foods, so I can add it again in one step.')) : null,
+      several ? keepField : null,
       h('label', { class: 'checkbox checkbox--top', for: 'scan-confirm' }, confirm, h('span', {}, 'I have checked the foods and amounts.')),
       h('div', { class: 'form__actions' }, save, isText ? editDescription() : null),
       manualLink(),
@@ -377,6 +396,17 @@ export function scanPanel({ store, meal, localDate, saveToLibrary, onSaved, onMa
     return h('details', { class: 'disclosure', id: 'scan-add' }, h('summary', {}, 'Add a missing item (such as oil, butter or a sauce)'), h('div', { class: 'search-row' }, h('label', { for: 'scan-add-q', class: 'visually-hidden' }, 'Food to add'), input, button), out);
   }
 
+  function defaultMealName() {
+    return mealName(rows.filter((r) => !r.removed).map((r) => r.name));
+  }
+
+  /** The food to store: on-screen flags are not kept. */
+  function chosenFood(row) {
+    const { estimated, ...food } = row.candidates[row.chosen];
+    void estimated;
+    return food;
+  }
+
   function confirmedRows() {
     return rows.filter((r) => !r.removed && r.chosen >= 0 && Number.isFinite(r.grams) && r.grams >= 1 && r.grams <= 5000);
   }
@@ -391,7 +421,7 @@ export function scanPanel({ store, meal, localDate, saveToLibrary, onSaved, onMa
     }
     const core = NUTRIENTS.filter((n) => n.group === 'core');
     host.replaceChildren(
-      h('h3', {}, 'For this meal (from the food database)'),
+      h('h3', {}, confirmedRows().some((r) => r.candidates[r.chosen].estimated) ? 'For this meal (food database and AI estimates)' : 'For this meal (from the food database)'),
       h(
         'dl',
         { class: 'stats' },
@@ -406,7 +436,8 @@ export function scanPanel({ store, meal, localDate, saveToLibrary, onSaved, onMa
   function saveAll(confirm, button) {
     const active = rows.filter((r) => !r.removed);
     if (active.some((r) => r.chosen < 0)) {
-      renderReview('Choose a food database match for every item: use “Search for a match” under it, or remove it.');
+      const names = active.filter((r) => r.chosen < 0).map((r) => r.name).join(', ');
+      renderReview(`No nutrition values were found for: ${names}. Use “Search for a match” under it, or remove it, then add the meal.`);
       return;
     }
     if (active.some((r) => !Number.isFinite(r.grams) || r.grams < 1 || r.grams > 5000)) {
@@ -423,9 +454,16 @@ export function scanPanel({ store, meal, localDate, saveToLibrary, onSaved, onMa
     }
     button.disabled = true;
     try {
+      const parts = [];
       for (const r of active) {
-        const food = saveToLibrary(r.candidates[r.chosen]);
+        const food = saveToLibrary(chosenFood(r));
+        parts.push({ food, grams: r.grams });
         store.addDiaryEntry({ ...buildDiaryEntry(food, { localDate, meal, servingG: Math.round(r.grams * 10) / 10 }), entryMethod: 'photo-scan' });
+      }
+      // One food for the whole meal as well (not for a single item: that food is already in My foods).
+      if (keepMeal && parts.length > 1) {
+        const combined = combineFoods((keepName ?? '').trim() || defaultMealName(), parts);
+        if (combined) saveToLibrary(combined);
       }
     } catch (error) {
       button.disabled = false;

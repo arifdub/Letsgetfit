@@ -34,7 +34,7 @@ Everything is stored in the browser's `localStorage`. Nothing is sent to a serve
 - **Unknown, not zero:** missing nutrient values show as *unknown*, and totals that include unknowns are flagged as incomplete.
 - **Adding foods:**
   - search USDA FoodData Central through a PHP endpoint, with the key kept server-side, timeouts, rate limits and a cache;
-  - pick from **My foods**;
+  - pick from **My foods**, which also keeps scanned meals as one food so they can be added again in one step;
   - create your own food from a label (per 100 g, raw or cooked, generic or branded).
 - **Reliable records:** every diary entry stores the source, source ID, per-100 g values with units, grams and a nutrient snapshot, so old entries never change. Duplicates are detected.
 - **Manual entry always works,** including on a static server or when search fails.

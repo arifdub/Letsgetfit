@@ -96,7 +96,7 @@ All must be done and signed off by the controller. The person running letsgetfit
 - Only JPEG, PNG and WebP are accepted, with size and pixel limits.
 - Users are told not to send photos of people.
 - The model is told to ignore text in the image.
-- Its output is sanitised and is never used for nutrient values.
+- Its output is sanitised. Nutrient values come from the food database; only when a food has no database match is the AI's rough estimate (energy, protein, carbohydrate, fat, fibre) used, and it is labelled “AI estimate”.
 - API keys live only in the private settings file, or encrypted in the database when set in the admin panel.
 - The consent text names the AI service in use (both when alternating), from `/api/health.php` → `scanProviders`.
 - Comparison statistics (`storage/scan-stats/YYYY-MM.json`) hold only counts per provider and model: scans, errors, time, tokens, foods found, and kept/changed/removed/added counts from saves. No photos, food names, IP addresses or identifiers.

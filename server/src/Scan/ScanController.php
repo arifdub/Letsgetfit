@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace LetsGetFit\Scan;
 
+use LetsGetFit\Nutrients;
 use LetsGetFit\Config;
 use LetsGetFit\FileCache;
 use LetsGetFit\FoodDataCentral;
@@ -25,7 +26,7 @@ use LetsGetFit\UpstreamException;
  */
 final class ScanController
 {
-    public const DISCLAIMER = 'Foods and amounts are suggestions from a photo and may be wrong. Check every item and amount. Nutrients come from the food database for what you confirm. A photo cannot show allergens, exact amounts or hidden ingredients.';
+    public const DISCLAIMER = 'Foods and amounts are suggestions and may be wrong. Check every item and amount. Nutrients come from the food database for what you confirm; a food with no database match uses a rough AI estimate, marked as such. A photo cannot show allergens, exact amounts or hidden ingredients.';
 
     public function __construct(
         private VisionProvider $vision,
@@ -140,6 +141,11 @@ final class ScanController
         $items = [];
         foreach ($result['items'] as $item) {
             $item['candidates'] = $this->candidates($item['searchTerm'], $item['name']);
+            // No database match: offer the AI's own rough values, labelled as an estimate.
+            if ($item['candidates'] === [] && is_array($item['estimate'] ?? null)) {
+                $item['candidates'] = [self::estimateCandidate($item['name'], $item['preparation'], $item['estimate'])];
+            }
+            unset($item['estimate']);
             $items[] = $item;
         }
         $body = [
@@ -285,6 +291,33 @@ final class ScanController
         }
 
         return [];
+    }
+
+    /**
+     * A stand-in for a database food, built from the AI's rough per-100 g values. Other nutrients are unknown.
+     * @param array<string, float> $estimate
+     * @return array<string, mixed>
+     */
+    public static function estimateCandidate(string $name, string $preparation, array $estimate): array
+    {
+        $per100g = array_fill_keys(array_keys(Nutrients::UNITS), null);
+        foreach ($estimate as $key => $value) {
+            $per100g[$key] = $value;
+        }
+
+        return [
+            'source' => 'ai-estimate',
+            'sourceId' => 'ai-' . substr(hash('sha256', mb_strtolower($name)), 0, 16),
+            'name' => mb_substr($name, 0, 80),
+            'brand' => null,
+            'kind' => 'generic',
+            'dataType' => 'AI estimate',
+            'preparation' => in_array($preparation, ['raw', 'cooked'], true) ? $preparation : 'unspecified',
+            'basis' => '100g',
+            'per100g' => $per100g,
+            'nutrientUnits' => Nutrients::UNITS,
+            'servingOptions' => [],
+        ];
     }
 
     /** @return list<string> distinct search wordings, most specific first */

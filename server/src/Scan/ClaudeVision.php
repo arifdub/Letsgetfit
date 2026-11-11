@@ -18,8 +18,8 @@ use LetsGetFit\Config;
 
 /**
  * Claude (Anthropic) vision adapter, through the official Anthropic PHP SDK. Same job, prompt and
- * JSON shape as the OpenAI adapter, so the two can be swapped or compared: the model only suggests
- * foods, portion ranges and questions, never nutrients.
+ * JSON shape as the OpenAI adapter, so the two can be swapped or compared: the model suggests
+ * foods, portion ranges and questions, plus a rough per-100 g estimate that is used, labelled, only when the food database has no match.
  *
  * Structured outputs (output_config.format) guarantee JSON matching the schema. Thinking is
  * adaptive, with its depth set by the effort setting. Server-side fallbacks ("default") are on, so

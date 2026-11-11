@@ -68,7 +68,8 @@ test('OpenAI request: key in header only, strict schema, low-detail image, outpu
     ok(str_starts_with($image['url'], 'data:image/jpeg;base64,/9j/'), 'JPEG data URL');
     eq($image['detail'], 'low');
     ok(!str_contains($call['url'], 'sk-test'), 'no key in URL');
-    ok(str_contains($body['messages'][0]['content'], 'Do not estimate calories'), 'model not asked for nutrients');
+    ok(str_contains($body['messages'][0]['content'], 'uses your estimate only when the database has no match'), 'the estimate is a fallback');
+    ok(in_array('per_100g', $body['response_format']['json_schema']['schema']['properties']['items']['items']['required'], true), 'per-100 g estimate in the schema');
     eq($call['timeouts'], [5, 30]);
     eq(count($out['items']), 2);
     eq($out['items'][0]['searchTerm'], 'rice, white, cooked');
@@ -150,6 +151,23 @@ test('image checks reject non-images, tiny images and oversized files', function
     $pos = strpos($fake, "\xFF\xC0");
     $bomb = substr_replace($fake, pack('n', 20000) . pack('n', 20000), $pos + 5, 4);
     expectScanError(fn () => (new ImageProcessor(8_000_000))->process($bomb), 'too_large');
+});
+
+test('AI nutrient estimate: used only when every number is plausible and energy agrees with the macros', function () {
+    $e = static fn (array $over = []): ?array => OpenAiVision::estimate($over + ['energy_kcal' => 450, 'protein_g' => 10, 'carbohydrate_g' => 62, 'fat_g' => 17, 'fibre_g' => 7]);
+    eq($e(), ['energy' => 450.0, 'protein' => 10.0, 'carbohydrate' => 62.0, 'fat' => 17.0, 'fibre' => 7.0]);
+    eq($e(['energy_kcal' => 901]), null, 'too much energy');
+    eq($e(['protein_g' => -1]), null, 'negative');
+    eq($e(['fat_g' => '17']), null, 'not a number');
+    eq($e(['carbohydrate_g' => 90]), null, 'more than 100 g in 100 g');
+    eq($e(['energy_kcal' => 120]), null, 'energy does not match the macros');
+    eq(OpenAiVision::estimate(null), null);
+    eq(OpenAiVision::estimate(['energy_kcal' => 50]), null, 'missing values');
+    // Water, tea: nothing in it is fine.
+    eq(OpenAiVision::estimate(['energy_kcal' => 0, 'protein_g' => 0, 'carbohydrate_g' => 0, 'fat_g' => 0, 'fibre_g' => 0])['energy'], 0.0);
+    $c = \LetsGetFit\Scan\ScanController::estimateCandidate('Homemade Granola', 'cooked', $e());
+    eq([$c['source'], $c['name'], $c['preparation'], $c['per100g']['energy'], $c['per100g']['calcium']], ['ai-estimate', 'Homemade Granola', 'cooked', 450.0, null]);
+    eq($c['sourceId'], \LetsGetFit\Scan\ScanController::estimateCandidate('homemade granola', 'raw', $e())['sourceId'], 'same food, same ID');
 });
 
 test('food database search wordings get simpler when the first finds nothing', function () {

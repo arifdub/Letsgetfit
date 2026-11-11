@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 // Mock of the OpenAI Chat Completions endpoint for integration tests (router for `php -S`).
-// The behaviour is chosen by the "model" field: mock-ok, mock-slow, mock-refuse, mock-notfood,
+// The behaviour is chosen by the "model" field: mock-ok, mock-estimate, mock-slow, mock-refuse, mock-notfood,
 // mock-500. Requires "Authorization: Bearer sk-test". Counts calls in MOCK_OPENAI_COUNT_FILE.
 
 $countFile = getenv('MOCK_OPENAI_COUNT_FILE') ?: sys_get_temp_dir() . '/mock-openai-count';
@@ -51,6 +51,15 @@ switch ($req['model'] ?? '') {
         break;
     case 'mock-notfood':
         $reply(['is_food' => false, 'image_quality' => 'good', 'items' => [], 'questions' => []]);
+        break;
+    case 'mock-estimate':
+        // One food the database cannot match (the mock database fails for the query "error").
+        $reply(['is_food' => true, 'image_quality' => 'good', 'items' => [
+            ['name' => 'Homemade granola', 'search_term' => 'error', 'preparation' => 'unspecified', 'grams_estimate' => 60, 'grams_low' => 40, 'grams_high' => 80, 'confidence' => 'medium',
+                'per_100g' => ['energy_kcal' => 450, 'protein_g' => 10, 'carbohydrate_g' => 62, 'fat_g' => 17, 'fibre_g' => 7]],
+            ['name' => 'Odd sauce', 'search_term' => 'error', 'preparation' => 'unspecified', 'grams_estimate' => 20, 'grams_low' => 10, 'grams_high' => 30, 'confidence' => 'low',
+                'per_100g' => ['energy_kcal' => 5000, 'protein_g' => 10, 'carbohydrate_g' => 62, 'fat_g' => 17, 'fibre_g' => 7]],
+        ], 'questions' => []]);
         break;
     case 'mock-500':
         http_response_code(500);

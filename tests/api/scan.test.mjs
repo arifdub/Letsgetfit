@@ -94,6 +94,23 @@ async function scan(url, { image = jpeg(), consent = true, requestId = randomUUI
   return { status: res.status, body: await res.json(), headers: res.headers };
 }
 
+test('no database match: the AI estimate is offered, labelled, and only when its numbers are plausible', { skip }, async (t) => {
+  const s = await setup({ openai_model: 'mock-estimate' });
+  t.after(() => s.stop());
+  const r = await scan(s.app.url);
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  const [granola, sauce] = r.body.items;
+  assert.equal(granola.candidates.length, 1);
+  const c = granola.candidates[0];
+  assert.deepEqual([c.source, c.name, c.dataType, c.basis], ['ai-estimate', 'Homemade granola', 'AI estimate', '100g']);
+  assert.match(c.sourceId, /^ai-[0-9a-f]{16}$/);
+  assert.deepEqual([c.per100g.energy, c.per100g.protein, c.per100g.carbohydrate, c.per100g.fat, c.per100g.fibre], [450, 10, 62, 17, 7]);
+  assert.equal(c.per100g.iron, null, 'nutrients the AI was not asked for stay unknown');
+  assert.ok(!('estimate' in granola) && !('per_100g' in granola));
+  assert.deepEqual(sauce.candidates, [], 'implausible numbers are not used');
+  assert.match(r.body.disclaimer, /rough AI estimate/);
+});
+
 test('scan returns suggestions with food database candidates, never nutrients from the AI', { skip }, async (t) => {
   const s = await setup();
   t.after(() => s.stop());
