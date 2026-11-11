@@ -43,7 +43,7 @@ Everything is stored in the browser's `localStorage`. Nothing is sent to a serve
 ## What Phase 3 adds
 
 - **Workouts:**
-  - an **exercise library** of 32 exercises, each with form cues, an animated demonstration, equipment, difficulty and substitutions;
+  - an **exercise library** of 33 exercises, each with form cues, an animated demonstration, equipment, difficulty and substitutions;
   - a **guided workout player**: set reps or time, sets, rest and pace, then follow a full-screen animated demonstration with a countdown, rep counter, rest screens and a summary that feeds the session logger;
   - five **starter routines** (Home starter, Home with dumbbells, Gym full body A and B, Core in 15 minutes);
   - a **session logger** for sets, reps and load (kg or lb), timed holds and cardio minutes, with an overall effort rating (1–10). The logger offers swaps and a safety note. A session in progress survives a page reload.

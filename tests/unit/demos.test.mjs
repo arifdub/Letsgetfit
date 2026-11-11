@@ -32,7 +32,7 @@ test('rig: keyframes interpolate smoothly and hold at the ends', () => {
 });
 
 test('every catalogue exercise has its own valid demonstration', () => {
-  assert.equal(EXERCISES.length, 32);
+  assert.equal(EXERCISES.length, 33);
   assert.deepEqual(Object.keys(DEMOS).sort(), EXERCISES.map((e) => e.id).sort(), 'demo IDs match exercise IDs exactly');
   const signatures = new Map();
   for (const ex of EXERCISES) {

@@ -1044,7 +1044,7 @@ await check('guided workout: setup, countdown, guided reps, pause, background, r
   await page.waitForSelector('[data-play-routine="no-equipment-three"]');
   await page.click('[data-play-routine="no-equipment-three"]');
   await page.waitForSelector('#player-begin');
-  assert.deepEqual(await page.locator('.setup-item').evaluateAll((els) => els.map((e) => e.dataset.exercise)), ['bodyweight-squat', 'push-up', 'back-extension']);
+  assert.deepEqual(await page.locator('.setup-item').evaluateAll((els) => els.map((e) => e.dataset.exercise)), ['bodyweight-squat', 'push-up', 'hindu-push-up']);
   assert.equal(await page.inputValue('#setup-reps-0'), '10', 'defaults come from the routine');
   assert.equal(await page.inputValue('#setup-sets-0'), '3');
   await page.fill('#setup-reps-0', '2');
@@ -1105,13 +1105,13 @@ await check('guided workout: setup, countdown, guided reps, pause, background, r
   await page.click('#player-skip');
   assert.equal(await text('title'), 'Rest');
   await page.click('#player-skip');
-  assert.deepEqual([await text('count'), await text('title')], ['3 of 3', 'Back extension (Superman)']);
+  assert.deepEqual([await text('count'), await text('title')], ['3 of 3', 'Hindu push-up']);
   await page.clock.runFor(6200);
   await page.waitForSelector('#player-summary');
   const summary = await page.textContent('#player-summary');
   assert.match(summary, /Bodyweight squat 2 reps/);
   assert.match(summary, /Push-up 2 s/);
-  assert.match(summary, /Back extension \(Superman\) 2 reps/);
+  assert.match(summary, /Hindu push-up 2 reps/);
   assert.doesNotMatch(await page.textContent('#workout-player'), /bpm|kcal|calor/i, 'no heart rate or calories without a source');
   // Saving goes through the existing session logger.
   await page.click('#player-save');
@@ -1122,7 +1122,7 @@ await check('guided workout: setup, countdown, guided reps, pause, background, r
   await page.waitForFunction(() => document.querySelector('#toast')?.textContent.includes('Session saved'));
   const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('letsgetfit.data')));
   const session = stored.workouts.find((w) => w.type === 'session');
-  assert.deepEqual(session.exercises.map((e) => [e.exerciseId, e.sets.length]), [['bodyweight-squat', 1], ['back-extension', 1]]);
+  assert.deepEqual(session.exercises.map((e) => [e.exerciseId, e.sets.length]), [['bodyweight-squat', 1], ['hindu-push-up', 1]]);
   assert.equal(session.routineId, 'no-equipment-three');
   assert.deepEqual(errors, []);
   await context.close();
@@ -1211,7 +1211,9 @@ await check('every exercise demo draws its whole figure inside the stage, at eve
             // the top centre of a frame and the feet reach towards its bottom corners.
             const view = stage.svg.querySelector('svg:not([display="none"])');
             const [x, y, w, h2] = ['x', 'y', 'width', 'height'].map((k) => Number(view.getAttribute(k)));
-            for (const [px, py] of [[x + w / 2, y], [x, y + h2], [x + w, y + h2]]) {
+            // A picture with its own background covers the whole circle instead.
+            if (demo.sprite.cover && !(x <= 14 && y <= 14 && w >= 172 && h2 >= 172)) problems.push(`${ex.id}: picture does not cover the stage`);
+            for (const [px, py] of demo.sprite.cover ? [] : [[x + w / 2, y], [x, y + h2], [x + w, y + h2]]) {
               if (Math.hypot(px - 100, py - 100) > STAGE_RADIUS) problems.push(`${ex.id}: picture outside the stage`);
             }
             continue;
@@ -1231,7 +1233,7 @@ await check('every exercise demo draws its whole figure inside the stage, at eve
     host.remove();
     return { count: EXERCISES.length, radius: STAGE_RADIUS, problems: [...new Set(problems)].slice(0, 12) };
   });
-  assert.equal(report.count, 32);
+  assert.equal(report.count, 33);
   assert.deepEqual(report.problems, []);
   assert.deepEqual(errors, []);
   await context.close();

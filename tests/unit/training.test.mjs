@@ -49,7 +49,7 @@ test('routines reference real exercises and include home and gym options', () =>
   assert.ok(ROUTINES.some((r) => r.location === 'home'));
   assert.ok(ROUTINES.some((r) => r.location === 'gym'));
   // The three-exercise routine needs nothing at all.
-  assert.deepEqual(getRoutine('no-equipment-three').exercises.map((i) => [i.exerciseId, getExercise(i.exerciseId).equipment]), [['bodyweight-squat', ['none']], ['push-up', ['none']], ['back-extension', ['none']]]);
+  assert.deepEqual(getRoutine('no-equipment-three').exercises.map((i) => [i.exerciseId, getExercise(i.exerciseId).equipment]), [['bodyweight-squat', ['none']], ['push-up', ['none']], ['hindu-push-up', ['none']]]);
   // A no-equipment option exists: every exercise in Home starter works without weights.
   assert.ok(getRoutine('home-starter').exercises.every((i) => getExercise(i.exerciseId).equipment.some((k) => ['none', 'mat', 'chair'].includes(k))));
 });

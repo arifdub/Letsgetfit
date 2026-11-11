@@ -92,6 +92,11 @@ export const EXERCISES = Object.freeze([
   },
   // ---- Push ----
   {
+    id: 'hindu-push-up', name: 'Hindu push-up', category: 'strength', muscles: 'Chest, shoulders, triceps and back', equipment: ['none'], difficulty: 'intermediate', logType: 'reps',
+    cues: ['Start in a push-up position, then push your hips up and back so your body makes an upside-down V.', 'Bend your elbows and sweep your chest forward, low over the floor between your hands.', 'Straighten your arms to lift your chest with your hips low, then return to the start.'],
+    substitutions: ['push-up', 'incline-push-up'],
+  },
+  {
     id: 'push-up', name: 'Push-up', category: 'strength', muscles: 'Chest, shoulders and triceps', equipment: ['none'], difficulty: 'intermediate', logType: 'reps',
     cues: ['Hands slightly wider than shoulders, body in a straight line from head to heels.', 'Lower your chest towards the floor with elbows at about 45 degrees.', 'Push the floor away to return, keeping your hips level.'],
     substitutions: ['incline-push-up', 'dumbbell-floor-press', 'machine-chest-press'],
@@ -202,11 +207,11 @@ export const ROUTINES = Object.freeze([
   {
     id: 'no-equipment-three', name: 'No-equipment three', location: 'home', difficulty: 'beginner', minutes: 12,
     equipmentSummary: 'No equipment',
-    description: 'Three classic moves you can do anywhere: squat, push-up and back extension.',
+    description: 'Three classic moves you can do anywhere: squat, push-up and Hindu push-up.',
     exercises: [
       { exerciseId: 'bodyweight-squat', sets: 3, target: '10–12 reps' },
       { exerciseId: 'push-up', sets: 3, target: '6–10 reps' },
-      { exerciseId: 'back-extension', sets: 3, target: '8–12 reps' },
+      { exerciseId: 'hindu-push-up', sets: 3, target: '6–10 reps' },
     ],
   },
   {

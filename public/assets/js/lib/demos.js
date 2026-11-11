@@ -258,6 +258,12 @@ export const DEMOS = Object.freeze({
     peak: 13 / 24,
     sprite: Object.freeze({ src: 'assets/img/pushup-sheet.webp', frames: 24, cols: 6, rows: 4, frameW: 400, frameH: 330, stageH: 108 }),
   }),
+  // The picture has its own pale background, so it covers the whole circle.
+  'hindu-push-up': rep([F(0, pushTop), F(0.125, pushBottom), F(0.5, pushBottom), F(0.75, pushTop), F(1, pushTop)], {
+    cycle: 3.4,
+    peak: 3 / 24,
+    sprite: Object.freeze({ src: 'assets/img/hindu-pushup-sheet.webp', frames: 24, cols: 6, rows: 4, frameW: 360, frameH: 360, stageH: 172, cover: true }),
+  }),
   'incline-push-up': rep([F(0, inclineTop), F(0.45, inclineBottom), F(0.55, inclineBottom), F(1, inclineTop)], {
     props: () => [rect(126, 118, 48, 7, 'prop', 2), line(168, 125, 168, GROUND, 'prop', 4), line(132, 125, 132, GROUND, 'prop-faint', 3)],
   }),
