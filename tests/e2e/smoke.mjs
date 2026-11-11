@@ -380,6 +380,55 @@ await check('mobile layout has no horizontal scroll and a bottom nav', async () 
   }
 });
 
+await check('dashboard: the calorie apple is empty, fills with the share of the budget logged, and turns red when over; macros show percent and what is left', async () => {
+  const { page, context, errors } = await freshPage();
+  // No profile yet: no budget, so nothing to compare with.
+  assert.equal(await page.getAttribute('#dashboard-apple', 'data-fill'), '0');
+  assert.match(await page.textContent('#dashboard-apple'), /No comparison/);
+  await fillMetric(page);
+  await page.waitForSelector('#dashboard-budget');
+  const budget = Number((await page.textContent('#dashboard-budget')).replace(/[^0-9]/g, ''));
+  assert.ok(budget > 1500 && budget < 4500, `budget ${budget}`);
+  assert.equal(await page.locator('#dashboard-apple .apple-gauge__fill').count(), 0, 'empty apple at the start of the day');
+  assert.match(await page.textContent('#dashboard-apple'), new RegExp(`${budget.toLocaleString('en-IE')}\\s*kcal left`));
+  assert.match(await page.textContent('[data-macro="protein"]'), /0 g.*0% · \d+ g left/s);
+  // Log a quarter of the budget.
+  await page.click('#quick-add');
+  await page.getByRole('button', { name: 'Log food' }).click();
+  await page.click('[data-tab="new"]');
+  await page.fill('#cf-name', 'Apple test meal');
+  await page.fill('#cf-n_energy', '500');
+  await page.fill('#cf-n_protein', '30');
+  await page.click('#custom-food-form button[type="submit"]');
+  const quarter = Math.round(budget / 4 / 5);
+  await page.fill('#amount-g', String(quarter));
+  await page.click('#amount-save');
+  await page.click('.primary-nav [data-route="overview"]');
+  assert.equal(await page.getAttribute('#dashboard-apple', 'data-fill'), '25');
+  // The fill is a rectangle clipped to the apple: its height is the share of the apple's 83 units.
+  const share = Number(await page.getAttribute('#dashboard-apple .apple-gauge__fill', 'height')) / 83;
+  assert.ok(Math.abs(share - 0.25) < 0.02, `a quarter full, not ${share}`);
+  assert.equal(await page.locator('#dashboard-apple.diary-gauge--over').count(), 0);
+  const protein = await page.textContent('[data-macro="protein"]');
+  assert.match(protein, new RegExp(`${Math.round(quarter * 0.3)} g`));
+  assert.match(protein, /\d+% · \d+ g left/);
+  // Go past the budget: the apple turns red and says how far over.
+  await page.evaluate(() => {
+    const d = JSON.parse(localStorage.getItem('letsgetfit.data'));
+    const e = d.diary[0];
+    e.nutrients.energy *= 5;
+    e.nutrients.protein *= 5;
+    localStorage.setItem('letsgetfit.data', JSON.stringify(d));
+  });
+  await page.reload();
+  await page.waitForSelector('#dashboard-apple.diary-gauge--over');
+  assert.match(await page.textContent('#dashboard-apple'), /\d+\s*kcal over/);
+  assert.equal(await page.locator('.dashboard-nutrition--over .apple-gauge--over').count(), 1);
+  assert.match(await page.textContent('[data-macro="protein"]'), /g over guide/);
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
 await check('quick add opens today’s food and exercise forms and updates the Dashboard', async () => {
   const { page, context } = await freshPage();
   await page.locator('#daily-dashboard').getByText('0 kcal', { exact: true }).waitFor();

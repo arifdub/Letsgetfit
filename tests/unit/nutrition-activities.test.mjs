@@ -75,3 +75,14 @@ test('activity table has unique IDs, Compendium codes and plausible METs', () =>
   }
   assert.equal(getActivity('other').met, null);
 });
+
+test('macro progress: percent of the guide amount, grams left, and grams over', async () => {
+  const { macroProgress } = await import('../../public/assets/js/lib/nutrition.js');
+  const p = macroProgress({ protein: 72, carbohydrate: 0, fat: 113.4, fibre: null }, { proteinG: 120.4, carbohydrateG: 300, fatG: 90, fibreG: 25 });
+  assert.deepEqual(p.protein, { targetG: 120, fraction: 0.6, percent: 60, leftG: 48, overG: 0 });
+  assert.deepEqual([p.carbohydrate.percent, p.carbohydrate.leftG], [0, 300]);
+  assert.deepEqual([p.fat.percent, p.fat.leftG, p.fat.overG], [126, 0, 23]);
+  assert.deepEqual([p.fibre.percent, p.fibre.leftG], [0, 25], 'nothing known counts as nothing logged');
+  assert.deepEqual(macroProgress({ protein: 10 }, null), {});
+  assert.ok(!('fat' in macroProgress({ fat: 10 }, { proteinG: 100, fatG: 0 })), 'no guide amount, no progress');
+});

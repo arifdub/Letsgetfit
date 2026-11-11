@@ -30,6 +30,34 @@ export function summaryRing(fraction, over = false) {
   return root;
 }
 
+const APPLE = 'M60 35C52 26 30 26 22 44C12 66 24 100 44 108C50 110 55 107 60 105C65 107 70 110 76 108C96 100 108 66 98 44C90 26 68 26 60 35Z';
+const APPLE_TOP = 27;
+const APPLE_BOTTOM = 110;
+let appleCount = 0;
+
+/**
+ * An apple that fills from the bottom as the day's calories are logged: empty at 0, full at the
+ * budget, and red all over once the budget is passed.
+ */
+export function appleGauge(fraction, over = false) {
+  const id = `apple-clip-${(appleCount += 1)}`;
+  const root = svg('svg', { viewBox: '0 0 120 120', class: over ? 'apple-gauge apple-gauge--over' : 'apple-gauge', 'aria-hidden': 'true' });
+  const clip = svg('clipPath', { id });
+  clip.append(svg('path', { d: APPLE }));
+  root.append(clip, svg('path', { d: APPLE, class: 'apple-gauge__body' }));
+  const f = over ? 1 : Math.max(0, Math.min(Number.isFinite(fraction) ? fraction : 0, 1));
+  if (f > 0) {
+    const height = (APPLE_BOTTOM - APPLE_TOP) * f;
+    root.append(svg('rect', { x: 0, y: APPLE_BOTTOM - height, width: 120, height, class: 'apple-gauge__fill', 'clip-path': `url(#${id})` }));
+  }
+  root.append(
+    svg('path', { d: APPLE, class: 'apple-gauge__outline' }),
+    svg('path', { d: 'M60 35C60 27 57 20 51 16', class: 'apple-gauge__stem' }),
+    svg('path', { d: 'M61 29C61 16 71 7 85 7C85 20 76 29 61 29Z', class: 'apple-gauge__leaf' }),
+  );
+  return root;
+}
+
 export function summaryBar(fraction) {
   const root = svg('svg', { viewBox: '0 0 100 6', preserveAspectRatio: 'none', class: 'summary-bar', 'aria-hidden': 'true' });
   root.append(svg('rect', { width: 100, height: 6, class: 'summary-bar__track' }));

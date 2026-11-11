@@ -120,3 +120,8 @@
 - **Start workout** on a routine, or **Start this exercise** in the library, opens a setup screen: Reps or Time where both make sense, sets, rest, demo pace and a still-poses option (on by default with `prefers-reduced-motion`).
 - The player (`lib/workout-player.js`, `ui/player.js`) runs from one clock: 3–2–1 countdown, work, side switches, rest with a preview of the next exercise, and a summary that opens the existing session logger. It pauses when the page is hidden. Repetitions are "guided reps": they count the demonstration's completed repetitions, not the user's movement.
 - Verified: unit tests (`demos.test.mjs`, `workout-player.test.mjs`) and Chromium browser tests with a phone viewport. Not verified: Safari/WebKit and real devices.
+
+## Dashboard calorie apple
+
+- Today's nutrition shows an apple that fills from the bottom with the share of the daily budget logged (`appleGauge` in `ui/chart.js`): empty at 0, and red with "kcal over" once the budget is passed. The budget is the same figure as the food diary's (goal budget if a goal is set, otherwise estimated maintenance).
+- Macro tiles show grams logged, a bar, the percent of a guide amount and the grams left (`macroProgress` in `lib/nutrition.js`). The guide amounts are the example split already used on the goals page (`maintenanceExample`), not a prescription.

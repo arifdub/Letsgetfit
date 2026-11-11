@@ -963,3 +963,27 @@ rect.fig-prop-mat { fill: #9ad4c6; }
   .player__bottom { align-self: center; }
 }
 .routine { flex-wrap: wrap; }
+
+/* ---------- Dashboard: calorie apple and macro progress ---------- */
+.apple-gauge { display: block; width: 100%; overflow: visible; }
+.apple-gauge__body { fill: #fbfdf9; }
+.apple-gauge__fill { fill: #bfe87a; }
+.apple-gauge__outline { fill: none; stroke: #7fa88c; stroke-width: 2.5; stroke-linejoin: round; }
+.apple-gauge__stem { fill: none; stroke: #2f6146; stroke-width: 3.5; stroke-linecap: round; }
+.apple-gauge__leaf { fill: #6fa653; }
+.apple-gauge--over .apple-gauge__body, .apple-gauge--over .apple-gauge__fill { fill: #f5a497; }
+.apple-gauge--over .apple-gauge__outline { stroke: #a8392c; }
+.diary-gauge--apple { width: clamp(9.5rem, 42vw, 12rem); }
+.dashboard-nutrition .stat__value { font-size: clamp(1.3rem, 5.5vw, 1.8rem); }
+/* The apple is always pale, in both themes, so the figure on it is always dark. */
+.diary-gauge--apple .diary-gauge__label { padding-top: 34%; color: #3f5a49; font-weight: 700; }
+.diary-gauge--apple .diary-gauge__label strong { color: #14261c; font-size: clamp(1.45rem, 6vw, 2rem); font-weight: 800; }
+.diary-gauge--over .diary-gauge__label { color: #7a2018; }
+.diary-gauge--over .diary-gauge__label strong { color: #7a2018; }
+.dashboard-nutrition--over { border-color: var(--danger); }
+.dashboard-rule { border: 0; border-top: 1px solid var(--border); margin: 0.6rem 0; }
+.dashboard-macros-head { margin: 0.25rem 0 0.5rem; }
+.dashboard-macros-head h3 { margin: 0; }
+.macro__value { display: block; }
+.macro__left { display: block; margin-top: 0.3rem; font-size: 0.75rem; font-weight: 600; color: var(--text-muted); }
+.macro .summary-bar__fill { fill: var(--macro-colour); }

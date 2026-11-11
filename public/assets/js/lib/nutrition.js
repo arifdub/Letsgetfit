@@ -25,6 +25,24 @@ export const REFERENCE = Object.freeze({
   fibreG: 25,
 });
 
+/**
+ * How far along each macro is against a day's guide amounts.
+ * @param {{protein?: number, carbohydrate?: number, fat?: number, fibre?: number}} totals grams eaten
+ * @param {{proteinG: number, carbohydrateG: number, fatG: number, fibreG: number}} guide grams for the day
+ * @returns {Record<string, {targetG: number, fraction: number, percent: number, leftG: number, overG: number}>}
+ */
+export function macroProgress(totals, guide) {
+  const out = {};
+  for (const key of ['protein', 'carbohydrate', 'fat', 'fibre']) {
+    const targetG = Math.round(guide?.[`${key}G`]);
+    if (!Number.isFinite(targetG) || targetG <= 0) continue;
+    const eaten = Number.isFinite(totals?.[key]) && totals[key] > 0 ? totals[key] : 0;
+    const diff = targetG - Math.round(eaten);
+    out[key] = { targetG, fraction: eaten / targetG, percent: Math.round((eaten / targetG) * 100), leftG: Math.max(0, diff), overG: Math.max(0, -diff) };
+  }
+  return out;
+}
+
 export function maintenanceExample(maintenanceKcal, weightKg) {
   if (!Number.isFinite(maintenanceKcal) || maintenanceKcal <= 0) throw new RangeError('maintenanceKcal must be positive');
   if (!Number.isFinite(weightKg) || weightKg <= 0) throw new RangeError('weightKg must be positive');
