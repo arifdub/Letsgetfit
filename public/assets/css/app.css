@@ -843,3 +843,123 @@ main { padding-top: clamp(1.25rem, 4vw, 2.5rem); }
 @media (min-width: 640px) {
   .dashboard-log-grid { display: grid; grid-template-columns: 2fr 3fr; gap: 1rem; align-items: start; }
 }
+
+/* ---------- Exercise figure (ui/figure.js). Fixed colours: the stage is always light. ---------- */
+.stage { display: block; width: 100%; height: 100%; }
+.stage-disc { fill: #ffffff; }
+.stage-ring-track { fill: none; stroke: rgb(255 255 255 / 0.22); stroke-width: 7; }
+.stage-ring { fill: none; stroke: #ffd166; stroke-width: 7; stroke-linecap: round; }
+.fig-ground { stroke: #cfdad6; stroke-width: 2; stroke-linecap: round; }
+.fig-limb { stroke-width: 9; stroke-linecap: round; }
+/* The LetsGetFit character: mint T-shirt with dark shoulders, charcoal joggers, white trainers. */
+.fig-skin { stroke: #d9a070; }
+.fig-skin-far { stroke: #b98250; }
+.fig-hand { fill: #d9a070; }
+.fig-hand-far { fill: #b98250; }
+.fig-joint { fill: rgb(110 60 30 / 0.3); }
+.fig-joint--leg { fill: rgb(255 255 255 / 0.16); }
+.fig-neck { stroke: #cf9562; stroke-width: 7; stroke-linecap: round; }
+.fig-face { fill: #dfa877; }
+.fig-hair { fill: #2b2320; }
+.fig-eye { fill: #1f1512; }
+.fig-top { stroke: #86d6a4; stroke-linecap: round; stroke-linejoin: round; }
+.fig-top--side { stroke-width: 20; fill: none; }
+.fig-top--front { stroke-width: 9; fill: #86d6a4; }
+.fig-sleeve { stroke: #1f5a4a; stroke-width: 11; stroke-linecap: round; }
+.fig-sleeve-far { stroke: #17463a; }
+.fig-leg { stroke: #3d4049; }
+.fig-leg-far { stroke: #2b2d34; }
+.fig-pelvis { stroke-width: 15; stroke-linecap: round; }
+.fig-sole { stroke: #2f9e7d; stroke-width: 9.5; stroke-linecap: round; }
+.fig-sole-far { stroke: #257f64; }
+.fig-shoe { stroke: #f6f8f7; stroke-width: 6; stroke-linecap: round; }
+.fig-shoe-far { stroke: #dfe5e3; stroke-width: 6; stroke-linecap: round; }
+.fig-prop { stroke-linecap: round; fill: none; }
+line.fig-prop { stroke: #8fa39d; }
+line.fig-prop-dark { stroke: #3d4f4a; }
+line.fig-prop-faint { stroke: #c6d2ce; }
+line.fig-prop-accent { stroke: #d4572a; }
+circle.fig-prop, rect.fig-prop { fill: #8fa39d; }
+circle.fig-prop-dark, rect.fig-prop-dark { fill: #3d4f4a; }
+circle.fig-prop-faint, rect.fig-prop-faint { fill: #dfe7e4; }
+rect.fig-prop-mat { fill: #9ad4c6; }
+.fig--front .fig-skin-far { stroke: #d9a070; }
+.fig--front .fig-hand-far { fill: #d9a070; }
+.fig--front .fig-leg-far { stroke: #3d4049; }
+.fig--front .fig-sleeve-far { stroke: #1f5a4a; }
+.fig--front .fig-sole-far { stroke: #2f9e7d; }
+.fig--front .fig-shoe-far { stroke: #f6f8f7; }
+
+/* ---------- Guided workout player (ui/player.js) ---------- */
+.stage--small { width: 72px; height: 72px; }
+.stage--medium { width: min(220px, 70%); height: auto; aspect-ratio: 1; margin: 0.25rem auto 0.5rem; }
+.stage--small .stage-disc, .stage--medium .stage-disc { stroke: var(--border); stroke-width: 1.5; }
+.exercise__preview:empty { display: none; }
+.routine__actions { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: flex-start; }
+
+.player {
+  position: fixed; inset: 0; margin: 0; padding: 0; border: 0;
+  width: 100vw; max-width: none; height: 100vh; height: 100dvh; max-height: none;
+  background: var(--bg); color: var(--text); overflow-y: auto; overscroll-behavior: contain;
+}
+.player::backdrop { background: var(--bg); }
+.player__setup { max-width: 640px; margin: 0 auto; padding: max(1rem, env(safe-area-inset-top)) max(1rem, env(safe-area-inset-right)) max(1.25rem, env(safe-area-inset-bottom)) max(1rem, env(safe-area-inset-left)); }
+.setup-list { list-style: none; margin: 1rem 0; padding: 0; display: grid; gap: 0.6rem; }
+.setup-item { display: flex; gap: 0.75rem; padding: 0.75rem; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); }
+.setup-item__preview { flex: 0 0 72px; }
+.setup-item__body { flex: 1 1 auto; min-width: 0; }
+.setup-item__name { font-weight: 700; margin: 0; }
+.setup-item__fields { display: flex; flex-wrap: wrap; gap: 0.5rem 1rem; align-items: flex-end; margin-top: 0.4rem; }
+.field--inline { margin: 0; }
+.field--inline label { display: block; font-size: 0.85rem; }
+.field--inline .input--short { width: 5.5rem; min-height: 44px; }
+.segmented--small { margin: 0; }
+.setup-options { display: grid; gap: 0.25rem; padding: 0.75rem 1rem; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 0.75rem; }
+.player__setup-actions { position: sticky; bottom: 0; padding: 0.75rem 0 0.25rem; background: linear-gradient(to top, var(--bg) 70%, transparent); }
+.button--large { min-height: 52px; font-size: 1.05rem; padding-inline: 1.5rem; }
+.finish-list { list-style: none; padding: 0; margin: 1rem 0; display: grid; gap: 0.4rem; }
+.finish-list li { padding: 0.6rem 0.8rem; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-small); }
+
+/* Running: always the same deep green, in light and dark themes, with a white stage. */
+.player--running { background: linear-gradient(180deg, #17937f 0%, #0f6b5c 45%, #0a4a40 100%); color: #ffffff; overflow: hidden; }
+.player--running::backdrop { background: #0a4a40; }
+.player__run {
+  height: 100%; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; justify-items: center; text-align: center;
+  padding: max(0.75rem, env(safe-area-inset-top)) max(1rem, env(safe-area-inset-right)) max(0.75rem, env(safe-area-inset-bottom)) max(1rem, env(safe-area-inset-left));
+}
+.player__top { padding-top: 0.25rem; }
+.player__count { margin: 0; font-weight: 800; font-size: 1.05rem; color: #ffd166; font-variant-numeric: tabular-nums; }
+.player__title { margin: 0.1rem 0 0; font-size: clamp(1.5rem, 6vw, 2.2rem); line-height: 1.15; color: #ffffff; }
+.player__title:focus { outline: none; }
+.player__sub { margin: 0.2rem 0 0; min-height: 1.4em; font-weight: 600; color: rgb(255 255 255 / 0.92); }
+.player__stage { position: relative; width: 100%; min-height: 0; display: grid; place-items: center; padding: 0.5rem 0; }
+.player__stage .stage { width: auto; height: 100%; max-width: 100%; aspect-ratio: 1; }
+.player__big {
+  position: absolute; inset: 0; margin: 0; display: grid; place-items: center; pointer-events: none;
+  font-size: clamp(5rem, 30vw, 9rem); font-weight: 800; color: #0a4a40; text-shadow: 0 0 18px #ffffff, 0 0 6px #ffffff;
+}
+.player__big:empty { display: none; }
+.player__bottom { width: 100%; max-width: 520px; }
+.player__counter { margin: 0; min-height: 1.05em; font-size: clamp(3rem, 16vw, 4.6rem); font-weight: 800; line-height: 1.05; font-variant-numeric: tabular-nums; color: #ffffff; }
+.player__label { margin: 0; min-height: 1.4em; font-weight: 700; color: #ffd166; }
+.player__cue { margin: 0.3rem auto 0.6rem; min-height: 2.8em; max-width: 34ch; font-size: 0.98rem; color: rgb(255 255 255 / 0.95); }
+.player__controls { display: grid; grid-template-columns: 1fr 1.3fr 1fr; gap: 0.6rem; align-items: stretch; }
+.player__button {
+  min-height: 56px; border-radius: 999px; border: 2px solid rgb(255 255 255 / 0.75); background: rgb(255 255 255 / 0.12); color: #ffffff;
+  font: inherit; font-weight: 700; padding: 0.4rem 0.6rem; cursor: pointer;
+}
+.player__button--main { background: #ffffff; color: #0a4a40; border-color: #ffffff; font-size: 1.1rem; }
+.player__button:focus-visible { outline: 3px solid #ffd166; outline-offset: 3px; }
+.player--paused .player__stage .stage { opacity: 0.55; }
+.player--paused .player__title::after { content: " (paused)"; font-weight: 600; font-size: 0.6em; }
+@media (max-height: 560px) {
+  .player__cue { display: none; }
+  .player__counter { font-size: 2.6rem; }
+  .player__button { min-height: 44px; }
+}
+@media (orientation: landscape) and (max-height: 500px) {
+  .player__run { grid-template-rows: auto minmax(0, 1fr); grid-template-columns: 1fr 1fr; column-gap: 1rem; }
+  .player__top { grid-column: 1 / -1; }
+  .player__bottom { align-self: center; }
+}
+.routine { flex-wrap: wrap; }

@@ -97,3 +97,7 @@ No Composer dependencies are needed yet. Everything uses PHP's standard library 
 - Confirmations use the native `<dialog>`. It traps focus and returns it to the button that opened it.
 - Visible `:focus-visible` outline, 44 px minimum touch targets, and light and dark themes with strong contrast.
 - `prefers-reduced-motion` turns off animation and transitions. `forced-colors` mode is supported.
+
+## Guided workout player
+
+`lib/rig.js` (pose maths), `lib/demos.js` (one demonstration per exercise ID) and `lib/workout-player.js` (segments, clock, summary) are pure and unit tested. `ui/figure.js` draws a demonstration as SVG using attributes and classes only, or shows a frame of a picture sheet where a demo has one. `ui/player.js` is the full-screen `<dialog id="workout-player">`; everything on screen is derived from the session's elapsed time, so pausing stops the timer, counter, ring and animation together.

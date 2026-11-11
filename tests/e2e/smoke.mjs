@@ -1037,6 +1037,204 @@ async function openScan(page) {
   await page.waitForSelector('#scan-panel');
 }
 
+await check('guided workout: setup, countdown, guided reps, pause, background, rest, timed mode, skip, finish and log', async () => {
+  const { page, context, errors } = await freshPage();
+  await page.clock.install();
+  await page.goto(`${BASE}#workouts`);
+  await page.waitForSelector('[data-play-routine="no-equipment-three"]');
+  await page.click('[data-play-routine="no-equipment-three"]');
+  await page.waitForSelector('#player-begin');
+  assert.deepEqual(await page.locator('.setup-item').evaluateAll((els) => els.map((e) => e.dataset.exercise)), ['bodyweight-squat', 'push-up', 'back-extension']);
+  assert.equal(await page.inputValue('#setup-reps-0'), '10', 'defaults come from the routine');
+  assert.equal(await page.inputValue('#setup-sets-0'), '3');
+  await page.fill('#setup-reps-0', '2');
+  await page.fill('#setup-sets-0', '1');
+  await page.check('input[name="setup-mode-1"][value="time"]');
+  await page.fill('#setup-seconds-1', '6');
+  await page.fill('#setup-sets-1', '1');
+  await page.fill('#setup-reps-2', '2');
+  await page.fill('#setup-sets-2', '1');
+  await page.fill('#setup-rest', '5');
+  await page.locator('#setup-rest').blur();
+  await page.click('#player-begin');
+  await page.waitForSelector('#player-pause');
+  // Full screen: the dialog covers the whole viewport.
+  const box = await page.locator('#workout-player').boundingBox();
+  const vp = page.viewportSize();
+  assert.deepEqual([Math.round(box.x), Math.round(box.y), Math.round(box.width), Math.round(box.height)], [0, 0, vp.width, vp.height]);
+  const text = (id) => page.textContent(`#player-${id}`);
+  assert.deepEqual([await text('count'), await text('title'), await text('big')], ['1 of 3', 'Bodyweight squat', '3']);
+  await page.clock.runFor(1100);
+  assert.equal(await text('big'), '2');
+  await page.clock.runFor(1950);
+  assert.deepEqual([await text('counter'), await text('label'), await text('big')], ['0', 'Guided reps · of 2', '']);
+  assert.ok((await text('cue')).length > 10, 'a form cue is shown');
+  await page.clock.runFor(2800);
+  assert.equal(await text('counter'), '0', 'not counted until the repetition is complete');
+  await page.clock.runFor(300);
+  assert.equal(await text('counter'), '1');
+  // Pause: nothing moves, then it resumes from the same point.
+  const ring = () => page.getAttribute('#workout-player .stage-ring', 'stroke-dasharray');
+  await page.click('#player-pause');
+  const frozen = await ring();
+  await page.clock.runFor(5000);
+  assert.deepEqual([await text('counter'), await ring(), await text('pause')], ['1', frozen, 'Resume']);
+  await page.click('#player-pause');
+  await page.clock.runFor(500);
+  assert.notEqual(await ring(), frozen);
+  // Going to the background pauses it.
+  await page.evaluate(() => {
+    Object.defineProperty(document, 'hidden', { value: true, configurable: true });
+    document.dispatchEvent(new Event('visibilitychange'));
+    Object.defineProperty(document, 'hidden', { value: false, configurable: true });
+  });
+  assert.equal(await text('pause'), 'Resume');
+  await page.clock.runFor(4000);
+  assert.equal(await text('counter'), '1');
+  await page.keyboard.press('Escape'); // Escape never closes a running workout
+  assert.equal(await page.isVisible('#player-pause'), true);
+  await page.click('#player-pause');
+  await page.clock.runFor(2600);
+  // Rest: countdown, and what is next.
+  assert.deepEqual([await text('title'), await text('counter'), await text('skip')], ['Rest', '5', 'Skip rest']);
+  assert.match(await text('sub'), /^Next: Push-up/);
+  await page.clock.runFor(5050);
+  assert.deepEqual([await text('count'), await text('title'), await text('counter'), await text('label')], ['2 of 3', 'Push-up', '6', 'seconds left']);
+  await page.clock.runFor(2500);
+  assert.equal(await text('counter'), '4');
+  await page.click('#player-skip');
+  assert.equal(await text('title'), 'Rest');
+  await page.click('#player-skip');
+  assert.deepEqual([await text('count'), await text('title')], ['3 of 3', 'Back extension (Superman)']);
+  await page.clock.runFor(6200);
+  await page.waitForSelector('#player-summary');
+  const summary = await page.textContent('#player-summary');
+  assert.match(summary, /Bodyweight squat 2 reps/);
+  assert.match(summary, /Push-up 2 s/);
+  assert.match(summary, /Back extension \(Superman\) 2 reps/);
+  assert.doesNotMatch(await page.textContent('#workout-player'), /bpm|kcal|calor/i, 'no heart rate or calories without a source');
+  // Saving goes through the existing session logger.
+  await page.click('#player-save');
+  await page.waitForSelector('#session-form');
+  assert.equal(await page.isVisible('#workout-player'), false);
+  assert.deepEqual([await page.inputValue('#set-0-0-reps'), await page.inputValue('#set-2-0-reps'), await page.inputValue('#session-duration'), await page.inputValue('#session-title')], ['2', '2', '1', 'No-equipment three']);
+  await page.click('#session-save');
+  await page.waitForFunction(() => document.querySelector('#toast')?.textContent.includes('Session saved'));
+  const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('letsgetfit.data')));
+  const session = stored.workouts.find((w) => w.type === 'session');
+  assert.deepEqual(session.exercises.map((e) => [e.exerciseId, e.sets.length]), [['bodyweight-squat', 1], ['back-extension', 1]]);
+  assert.equal(session.routineId, 'no-equipment-three');
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+await check('guided workout: library preview, one-sided hold with switch, still poses, ending early', async () => {
+  const { page, context, errors } = await freshPage();
+  await page.clock.install();
+  await page.goto(`${BASE}#workouts`);
+  await page.click('li[data-exercise="push-up"] summary');
+  await page.waitForSelector('li[data-exercise="push-up"] .exercise__preview svg.stage');
+  assert.match(await page.textContent('li[data-exercise="push-up"]'), /Hands slightly wider than shoulders/, 'instructions with the preview');
+  await page.click('li[data-exercise="side-plank"] summary');
+  await page.click('[data-play-exercise="side-plank"]');
+  await page.waitForSelector('#player-begin');
+  assert.equal(await page.locator('input[name="setup-mode-0"]').count(), 0, 'a hold is timed only');
+  await page.fill('#setup-seconds-0', '5');
+  await page.fill('#setup-sets-0', '1');
+  await page.check('#setup-still');
+  await page.click('#player-begin');
+  await page.clock.runFor(3100);
+  const visibleFigures = () => page.locator('#workout-player g.fig:not([display="none"])').count();
+  assert.equal(await visibleFigures(), 1, 'a hold shows one still pose');
+  assert.match(await page.textContent('#player-sub'), /Right side down/);
+  await page.clock.runFor(5000);
+  assert.equal(await page.textContent('#player-title'), 'Switch sides');
+  assert.match(await page.textContent('#player-sub'), /Left side down/);
+  await page.clock.runFor(5100);
+  assert.match(await page.textContent('#player-sub'), /Left side down/);
+  assert.match(await page.getAttribute('#workout-player g.fig', 'transform'), /scale\(-/, 'the second side is shown mirrored');
+  await page.click('#player-end');
+  await page.click('#confirm-ok');
+  await page.waitForSelector('#player-summary');
+  assert.match(await page.textContent('#player-summary'), /Side plank 5 s each side/);
+  await page.click('#player-close');
+  assert.equal(await page.isVisible('#workout-player'), false);
+  // Still poses for a repetition exercise: start and end positions side by side. The choice is remembered.
+  await page.click('[data-play-exercise="push-up"]');
+  assert.equal(await page.isChecked('#setup-still'), true);
+  await page.click('#player-begin');
+  await page.clock.runFor(3200);
+  assert.equal(await visibleFigures(), 2);
+  await page.click('#player-end');
+  await page.click('#confirm-ok');
+  await page.waitForSelector('#player-close');
+  assert.match(await page.textContent('#workout-player'), /nothing to save/);
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+await check('every exercise demo draws its whole figure inside the stage, at every point of the movement', async () => {
+  const { page, context, errors } = await freshPage();
+  const report = await page.evaluate(async () => {
+    const { EXERCISES } = await import('./assets/js/lib/exercises.js');
+    const { getDemo } = await import('./assets/js/lib/demos.js');
+    const { createStage, STAGE_RADIUS } = await import('./assets/js/ui/figure.js');
+    const host = document.createElement('div');
+    host.setAttribute('class', 'stage--medium');
+    document.body.append(host);
+    const problems = [];
+    for (const ex of EXERCISES) {
+      const demo = getDemo(ex.id);
+      if (!demo) {
+        problems.push(`${ex.id}: no demo`);
+        continue;
+      }
+      const stage = createStage({});
+      stage.setDemo(demo);
+      host.replaceChildren(stage.svg);
+      const disc = stage.svg.querySelector('.stage-disc').getBoundingClientRect();
+      const cx = disc.x + disc.width / 2;
+      const cy = disc.y + disc.height / 2;
+      const r = disc.width / 2;
+      if (!(r > 20)) problems.push(`${ex.id}: stage not laid out`);
+      const tracks = demo.intro ? [false, true] : [false];
+      for (const intro of tracks) {
+        for (let i = 0; i <= 16; i += 1) {
+          stage.draw(i / 16, { intro });
+          if (demo.sprite) {
+            // Shown as pictures from the owner's animation: one visible frame, inside the circle.
+            const frames = stage.svg.querySelectorAll('svg:not([display="none"]) > image');
+            if (frames.length !== 1) problems.push(`${ex.id}: ${frames.length} picture frames`);
+            // Measured in stage units (the circle is STAGE_RADIUS around 100, 100). The head is at
+            // the top centre of a frame and the feet reach towards its bottom corners.
+            const view = stage.svg.querySelector('svg:not([display="none"])');
+            const [x, y, w, h2] = ['x', 'y', 'width', 'height'].map((k) => Number(view.getAttribute(k)));
+            for (const [px, py] of [[x + w / 2, y], [x, y + h2], [x + w, y + h2]]) {
+              if (Math.hypot(px - 100, py - 100) > STAGE_RADIUS) problems.push(`${ex.id}: picture outside the stage`);
+            }
+            continue;
+          }
+          const parts = stage.svg.querySelectorAll('g.fig:not([display="none"]) .fig-limb, g.fig:not([display="none"]) .fig-hand, g.fig:not([display="none"]) .fig-shoe, g.fig:not([display="none"]) .fig-top, g.fig:not([display="none"]) image:not([display="none"]), g.fig:not([display="none"]) .fig-hair:not([display="none"])');
+          if (parts.length < 12) problems.push(`${ex.id}: figure incomplete (${parts.length} parts)`);
+          for (const part of parts) {
+            const b = part.getBoundingClientRect();
+            for (const [x, y] of [[b.left, b.top], [b.right, b.top], [b.left, b.bottom], [b.right, b.bottom]]) {
+              // Bounding boxes are square, so allow their corners a little past the circle.
+              if (Math.hypot(x - cx, y - cy) > r * 1.08) problems.push(`${ex.id}: ${part.getAttribute('class')} outside the stage at ${i / 16}`);
+            }
+          }
+        }
+      }
+    }
+    host.remove();
+    return { count: EXERCISES.length, radius: STAGE_RADIUS, problems: [...new Set(problems)].slice(0, 12) };
+  });
+  assert.equal(report.count, 32);
+  assert.deepEqual(report.problems, []);
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
 await check('scan: hidden unless the server enables it', async () => {
   const { page, context } = await freshPage();
   await page.goto(`${BASE}#food`);

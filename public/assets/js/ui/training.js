@@ -6,6 +6,7 @@ import { toLocalDateString } from '../lib/dates.js';
 import { $, h, formatNumber, toast, confirmAction } from './dom.js';
 import { currentWeightKg } from './logs.js';
 import { weekLabel } from './progress.js';
+import { initPlayer, demoPreview, loadPlayerSettings } from './player.js';
 
 const LOCATION = { home: 'Home', gym: 'Gym' };
 
@@ -19,6 +20,18 @@ export function initTraining(store) {
   const resumeHost = $('#session-resume');
   let draft = null; // { ...session draft, editingId? }
   let saveTimer = null;
+
+  // The guided player hands its finished sets to the session logger below.
+  const player = initPlayer({ onLog: logFromPlayer });
+
+  async function logFromPlayer({ title, routineId, durationMin, exercises }) {
+    if (draft || store.draftSession) {
+      const ok = await confirmAction({ title: 'Replace the unsaved session?', body: 'You have a session in progress. Logging this workout replaces it.', confirmLabel: 'Replace' });
+      if (!ok) return;
+    }
+    openPanel({ ...newSession(null, toLocalDateString()), title, routineId, durationMin: String(durationMin), exercises });
+    toast('Check the sets, add any weights, then save the session.', 'info');
+  }
 
   /* ---------------- This week ---------------- */
 
@@ -47,13 +60,15 @@ export function initTraining(store) {
   function renderRoutines() {
     routinesHost.replaceChildren(
       ...ROUTINES.map((r) => {
-        const start = h('button', { type: 'button', class: 'button button--small button--primary', dataset: { startRoutine: r.id }, 'aria-label': `Start ${r.name}` }, 'Start');
+        const play = h('button', { type: 'button', class: 'button button--small button--primary', dataset: { playRoutine: r.id }, 'aria-label': `Start workout: ${r.name}` }, 'Start workout');
+        play.addEventListener('click', () => player.open(r.exercises, { title: r.name, routineId: r.id }));
+        const start = h('button', { type: 'button', class: 'button button--small', dataset: { startRoutine: r.id }, 'aria-label': `Log ${r.name} without the guided player` }, 'Log only');
         start.addEventListener('click', () => startSession(getRoutine(r.id)));
         return h(
           'li',
           { class: 'routine' },
           h('div', { class: 'routine__body' }, h('p', { class: 'entry__title' }, r.name), h('span', { class: 'badges' }, badge(LOCATION[r.location]), badge(DIFFICULTY[r.difficulty]), badge(`About ${r.minutes} min`)), h('p', { class: 'small' }, r.description), h('p', { class: 'muted small' }, `Equipment: ${r.equipmentSummary}. ${r.exercises.map((i) => getExercise(i.exerciseId).name).join(', ')}.`)),
-          start,
+          h('div', { class: 'routine__actions' }, play, start),
         );
       }),
     );
@@ -358,19 +373,35 @@ export function initTraining(store) {
                 addExercise(e.id);
                 panel.scrollIntoView({ block: 'start' });
               });
+              const play = h('button', { type: 'button', class: 'button button--small button--primary', dataset: { playExercise: e.id }, 'aria-label': `Start ${e.name} with the guided player` }, 'Start this exercise');
+              play.addEventListener('click', () => player.open([{ exerciseId: e.id, sets: e.logType === 'cardio' ? 1 : 3 }], { title: e.name }));
+              // The animated demonstration is created when the exercise is opened, and stops when it is closed.
+              const previewHost = h('div', { class: 'exercise__preview' });
+              let preview = null;
+              const details = h('details', { class: 'exercise' });
+              details.addEventListener('toggle', () => {
+                if (details.open) {
+                  preview = demoPreview(e.id, { still: loadPlayerSettings().still, size: 'medium' });
+                  previewHost.replaceChildren(preview.node);
+                  preview.start();
+                } else {
+                  preview?.stop();
+                  previewHost.replaceChildren();
+                }
+              });
               return h(
                 'li',
                 { dataset: { exercise: e.id } },
-                h(
-                  'details',
-                  { class: 'exercise' },
+                (details.append(
                   h('summary', {}, h('span', { class: 'exercise__name' }, e.name), h('span', { class: 'badges' }, badge(CATEGORIES[e.category]), badge(DIFFICULTY[e.difficulty]), badge(e.equipment.map((k) => EQUIPMENT[k]).join(' or ')))),
+                  previewHost,
                   h('p', { class: 'small' }, h('strong', {}, 'Works: '), e.muscles),
                   h('p', { class: 'small' }, h('strong', {}, 'How to do it')),
                   h('ol', { class: 'bullets small' }, e.cues.map((c) => h('li', {}, c))),
                   h('p', { class: 'small' }, h('strong', {}, 'Swap for: '), e.substitutions.map((id) => getExercise(id).name).join(', ')),
-                  add,
+                  h('div', { class: 'form__actions' }, play, add),
                 ),
+                details),
               );
             }),
           )

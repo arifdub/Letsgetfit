@@ -169,6 +169,11 @@ export const EXERCISES = Object.freeze([
     substitutions: ['dead-bug', 'plank'],
   },
   {
+    id: 'back-extension', name: 'Back extension (Superman)', category: 'core', muscles: 'Lower back and glutes', equipment: ['none'], difficulty: 'beginner', logType: 'reps',
+    cues: ['Lie face down with your arms stretched out in front of you.', 'Lift your chest, arms and legs a little off the floor, squeezing your glutes.', 'Pause for a moment, then lower with control. Keep your neck long and look at the floor.'],
+    substitutions: ['bird-dog', 'glute-bridge'],
+  },
+  {
     id: 'farmers-carry', name: 'Farmer’s carry', category: 'core', muscles: 'Grip, shoulders and core', equipment: ['dumbbells', 'kettlebell'], difficulty: 'beginner', logType: 'time',
     cues: ['Hold a weight in each hand by your sides.', 'Walk tall with your shoulders back and down.', 'Take short, steady steps. Record the time.'],
     substitutions: ['plank', 'side-plank'],
@@ -194,6 +199,16 @@ export const EXERCISES = Object.freeze([
 // Prescriptions are general starting points. "8–12" means choose a load or version you can do
 // for that many repetitions with good form, stopping with 1–3 repetitions in reserve.
 export const ROUTINES = Object.freeze([
+  {
+    id: 'no-equipment-three', name: 'No-equipment three', location: 'home', difficulty: 'beginner', minutes: 12,
+    equipmentSummary: 'No equipment',
+    description: 'Three classic moves you can do anywhere: squat, push-up and back extension.',
+    exercises: [
+      { exerciseId: 'bodyweight-squat', sets: 3, target: '10–12 reps' },
+      { exerciseId: 'push-up', sets: 3, target: '6–10 reps' },
+      { exerciseId: 'back-extension', sets: 3, target: '8–12 reps' },
+    ],
+  },
   {
     id: 'home-starter', name: 'Home starter', location: 'home', difficulty: 'beginner', minutes: 25,
     equipmentSummary: 'No equipment (a chair and a mat help)',
