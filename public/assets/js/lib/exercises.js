@@ -209,9 +209,9 @@ export const ROUTINES = Object.freeze([
     equipmentSummary: 'No equipment',
     description: 'Three classic moves you can do anywhere: squat, push-up and Hindu push-up.',
     exercises: [
-      { exerciseId: 'bodyweight-squat', sets: 3, target: '10–12 reps' },
-      { exerciseId: 'push-up', sets: 3, target: '6–10 reps' },
-      { exerciseId: 'hindu-push-up', sets: 3, target: '6–10 reps' },
+      { exerciseId: 'bodyweight-squat', sets: 3, target: '12 reps' },
+      { exerciseId: 'push-up', sets: 3, target: '12 reps' },
+      { exerciseId: 'hindu-push-up', sets: 3, target: '12 reps' },
     ],
   },
   {

@@ -231,12 +231,12 @@ test('repeat the set, and change the repetitions for this set and the ones to co
   assert.deepEqual(session.segments.filter((x) => x.type === 'work' && x.item === 0).map((x) => x.target), [2, 3]);
 });
 
-test('voice: 3-2-1, go, each finished repetition, encouragement, rest and the end', () => {
-  const items = [{ ...planItem('bodyweight-squat', { sets: 1, target: '6 reps' }) }, { ...planItem('plank', { sets: 1, target: '30 seconds' }) }];
+test('voice: 3-2-1 Start, halfway, 3-2-1 Finish; repetitions are not counted one by one', () => {
+  const items = [{ ...planItem('bodyweight-squat', { sets: 1, target: '12 reps' }) }, { ...planItem('plank', { sets: 1, target: '30 seconds' }) }];
   const session = createSession(buildSegments(items, { restSec: 5, pace: 'normal' }));
   const said = [];
   let mark = null;
-  for (let t = 0; t < 70000 && !session.finished; t += 100) {
+  for (let t = 0; t < 90000 && !session.finished; t += 100) {
     const cue = spokenCue(mark, session);
     mark = cue.mark;
     if (cue.say) said.push(cue.say);
@@ -244,12 +244,36 @@ test('voice: 3-2-1, go, each finished repetition, encouragement, rest and the en
   }
   said.push(spokenCue(mark, session).say);
   assert.deepEqual(said, [
-    'Get ready. Bodyweight squat.', '2', '1', 'Go!', '1', '2', '3. Halfway!', '4', '5. Last one!',
-    'Rest. Next, Plank.', '3', '2', '1', 'Go!', 'Halfway!', 'Ten seconds.', '3', '2', '1',
-    'Workout complete. Well done!',
+    '3', '2', '1', 'Start!', 'Halfway!', '3', '2', '1',
+    'Finish! Rest.', '3', '2', '1', 'Start!', 'Halfway!', '3', '2', '1',
+    'Finish! Workout complete. Well done!',
   ]);
-  // Nothing is repeated while the moment stays the same (for example when paused).
-  const again = createSession(buildSegments(items, { restSec: 5 }));
-  const first = spokenCue(null, again);
-  assert.equal(spokenCue(first.mark, again).say, null);
+  // A short set has no "halfway", and nothing is repeated while the moment stays the same.
+  const short = createSession(buildSegments([planItem('push-up', { sets: 1, target: '4 reps' })], { restSec: 5 }));
+  const heard = [];
+  let m = null;
+  for (let t = 0; t < 30000 && !short.finished; t += 100) {
+    const cue = spokenCue(m, short);
+    m = cue.mark;
+    if (cue.say) heard.push(cue.say);
+    assert.equal(spokenCue(m, short).say, null);
+    advance(short, 100);
+  }
+  assert.deepEqual(heard, ['3', '2', '1', 'Start!', '3', '2', '1']);
+  // Ending early is not a finished set.
+  const early = createSession(buildSegments(items, { restSec: 5 }));
+  const first = spokenCue(null, early);
+  end(early);
+  assert.equal(spokenCue(first.mark, early).say, 'Workout complete. Well done!');
+});
+
+test('voice choice: the most natural English voice the device has', async () => {
+  const { pickVoice } = await import('../../public/assets/js/ui/sound.js');
+  const v = (name, lang, localService = true) => ({ name, lang, localService });
+  assert.equal(pickVoice([]), null);
+  assert.equal(pickVoice([v('Anna', 'de-DE')]), null, 'no English voice: use the device default');
+  assert.equal(pickVoice([v('Fred', 'en-US'), v('Samantha', 'en-US'), v('Thomas', 'fr-FR')]).name, 'Samantha');
+  assert.equal(pickVoice([v('Samantha', 'en-US'), v('Microsoft Sonia Online (Natural) - English (United Kingdom)', 'en-GB', false)]).name.includes('Natural'), true);
+  assert.equal(pickVoice([v('Daniel', 'en-GB'), v('Moira', 'en-IE'), v('Samantha (Enhanced)', 'en-US')]).name, 'Samantha (Enhanced)');
+  assert.equal(pickVoice([v('Alex', 'en-US'), v('Kate', 'en-GB')]).name, 'Kate', 'with no better hint, Irish or British English');
 });

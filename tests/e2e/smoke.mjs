@@ -1094,7 +1094,8 @@ await check('guided workout: setup, countdown, guided reps, pause, background, r
   await page.click('[data-play-routine="no-equipment-three"]');
   await page.waitForSelector('#player-begin');
   assert.deepEqual(await page.locator('.setup-item').evaluateAll((els) => els.map((e) => e.dataset.exercise)), ['bodyweight-squat', 'push-up', 'hindu-push-up']);
-  assert.equal(await page.inputValue('#setup-reps-0'), '10', 'defaults come from the routine');
+  assert.equal(await page.inputValue('#setup-reps-0'), '12', 'defaults come from the routine');
+  assert.deepEqual([await page.inputValue('#setup-reps-1'), await page.inputValue('#setup-reps-2'), await page.inputValue('#setup-sets-1'), await page.inputValue('#setup-sets-2')], ['12', '12', '3', '3']);
   assert.equal(await page.inputValue('#setup-sets-0'), '3');
   await page.fill('#setup-reps-0', '2');
   await page.fill('#setup-sets-0', '1');
@@ -1192,18 +1193,18 @@ await check('guided workout: the figure waits during rest; voice cues; start fro
   const text = (id) => page.textContent(`#player-${id}`);
   const said = () => page.getAttribute('#workout-player', 'data-said');
   const frame = () => page.getAttribute('#workout-player svg.stage svg:not([display="none"])', 'viewBox');
-  assert.equal(await said(), 'Get ready. Bodyweight squat.');
+  assert.equal(await said(), '3');
   await page.clock.runFor(1100);
   assert.equal(await said(), '2');
   await page.clock.runFor(2000);
-  assert.equal(await said(), 'Go!');
+  assert.equal(await said(), 'Start!');
   // During the exercise the picture moves; during the rest it waits in the start position.
   const moving = await frame();
   await page.clock.runFor(1200);
   assert.notEqual(await frame(), moving, 'animated while working');
   await page.clock.runFor(2000);
   assert.equal(await text('title'), 'Rest');
-  assert.equal(await said(), 'Rest. Next, Bodyweight squat.');
+  assert.equal(await said(), 'Finish! Rest.');
   const resting = await frame();
   await page.clock.runFor(1500);
   assert.equal(await frame(), resting, 'still while resting');
@@ -1220,7 +1221,7 @@ await check('guided workout: the figure waits during rest; voice cues; start fro
   await page.click('#player-prev');
   assert.deepEqual([await text('count'), await text('title')], ['2 of 3', 'Push-up']);
   await page.clock.runFor(3100 + 3100);
-  assert.deepEqual([await text('counter'), await text('label')], ['1', 'Guided reps · of 6']);
+  assert.deepEqual([await text('counter'), await text('label')], ['1', 'Guided reps · of 12']);
   // The exercise list pauses the workout; change the repetitions and repeat the set.
   await page.click('#player-list');
   await page.waitForSelector('#player-sheet:not([hidden])');
@@ -1229,14 +1230,14 @@ await check('guided workout: the figure waits during rest; voice cues; start fro
   assert.equal(await page.getAttribute('.sheet-item--current', 'data-item'), '1');
   await page.click('#sheet-more');
   await page.click('#sheet-more');
-  assert.equal(await page.textContent('#sheet-target'), '8 reps');
+  assert.equal(await page.textContent('#sheet-target'), '14 reps');
   await page.click('#sheet-less');
-  assert.equal(await page.textContent('#sheet-target'), '7 reps');
-  assert.match(await page.textContent('.sheet-item--current'), /3 × 7 reps/);
+  assert.equal(await page.textContent('#sheet-target'), '13 reps');
+  assert.match(await page.textContent('.sheet-item--current'), /3 × 13 reps/);
   await page.click('#sheet-repeat');
   assert.equal(await page.isHidden('#player-sheet'), true);
   assert.equal(await page.locator('#workout-player.player--paused').count(), 0, 'running again');
-  assert.deepEqual([await text('counter'), await text('label'), await text('sub')], ['0', 'Guided reps · of 7', 'Set 1 of 3']);
+  assert.deepEqual([await text('counter'), await text('label'), await text('sub')], ['0', 'Guided reps · of 13', 'Set 1 of 3']);
   // Go to any exercise from the list.
   await page.click('#player-list');
   await page.click('[data-jump="0"]');

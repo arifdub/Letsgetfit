@@ -174,7 +174,7 @@ export function initPlayer({ onLog }) {
           { class: 'setup-options' },
           numberField('setup-rest', 'Rest between sets and exercises (seconds)', settings.restSec, LIMITS.restSec, (v) => (settings.restSec = v)),
           h('div', { class: 'field' }, h('label', { for: 'setup-pace' }, 'Demo pace for repetitions'), h('p', { class: 'hint' }, 'Guided reps count the cartoon’s repetitions, so pick a pace you can follow comfortably.'), pace),
-          h('div', { class: 'field' }, h('label', { class: 'checkbox' }, music, 'Play background music'), h('label', { class: 'checkbox' }, voice, 'Voice: count repetitions and call out what is next'), h('p', { class: 'hint' }, 'Sound follows your phone’s volume. On an iPhone, switch off silent mode to hear the music.')),
+          h('div', { class: 'field' }, h('label', { class: 'checkbox' }, music, 'Play background music'), h('label', { class: 'checkbox' }, voice, 'Voice: “3, 2, 1, Start” and “3, 2, 1, Finish”'), h('p', { class: 'hint' }, 'Sound follows your phone’s volume. On an iPhone, switch off silent mode to hear the music.')),
           h('div', { class: 'field' }, h('label', { class: 'checkbox' }, still, 'Show still poses instead of animation'), h('p', { class: 'hint' }, 'Shows the start and end positions without movement. Timers and counters work the same way.')),
         ),
         h('p', { class: 'muted small' }, SAFETY_NOTE),

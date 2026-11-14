@@ -213,36 +213,32 @@ export function retarget(session, item, value) {
   return applied;
 }
 
-const KEEP_GOING = Object.freeze(['Keep going!', 'You’ve got this!', 'Nice and steady.', 'Stay strong!', 'Looking good!']);
-
 /**
- * What the voice says at this instant, if anything: the 3-2-1, each finished repetition, time
- * calls and a few encouraging words. `prev` is what was returned as `mark` last time.
- * @returns {{ say: string|null, mark: { index: number, reps: number|null, remainingSec: number } }}
+ * What the voice says at this instant, if anything. It does not count every repetition: it counts
+ * in ("3, 2, 1, Start!"), says "Halfway!" on longer sets, and counts out the last three
+ * repetitions or seconds ("3, 2, 1, Finish!"). `prev` is what was returned as `mark` last time.
+ * @returns {{ say: string|null, mark: { index: number, type: string, reps: number|null, remainingSec: number } }}
  */
 export function spokenCue(prev, session, s = snapshot(session)) {
-  if (s.type === 'finished') return { say: prev?.index === -1 ? null : 'Workout complete. Well done!', mark: { index: -1, reps: null, remainingSec: 0 } };
-  const mark = { index: session.index, reps: s.reps ?? null, remainingSec: s.remainingSec };
+  const finishing = prev?.type === 'work' ? 'Finish! ' : '';
+  if (s.type === 'finished') return { say: prev?.index === -1 ? null : `${finishing}Workout complete. Well done!`, mark: { index: -1, type: 'finished', reps: null, remainingSec: 0 } };
+  const mark = { index: session.index, type: s.type, reps: s.reps ?? null, remainingSec: s.remainingSec };
   const fresh = !prev || prev.index !== mark.index;
   let say = null;
   if (s.type === 'work') {
     const { mode, target } = s.seg;
-    if (fresh) say = 'Go!';
+    if (fresh) say = `${finishing}Start!`;
     else if (mode === 'reps' && s.reps > prev.reps) {
-      if (s.reps >= target) say = `${s.reps}. Done!`;
-      else if (s.reps === target - 1 && target > 2) say = `${s.reps}. Last one!`;
-      else if (s.reps * 2 === target && target >= 6) say = `${s.reps}. Halfway!`;
-      else if (s.reps % 5 === 0 && target - s.reps > 2) say = `${s.reps}. ${KEEP_GOING[(s.reps / 5) % KEEP_GOING.length]}`;
-      else say = String(s.reps);
+      const left = target - s.reps;
+      if (left >= 1 && left <= 3) say = String(left);
+      else if (s.reps * 2 === target && target >= 8) say = 'Halfway!';
     } else if (mode === 'time' && s.remainingSec !== prev.remainingSec) {
       const left = s.remainingSec;
       if (left <= 3 && left > 0) say = String(left);
-      else if (left === 10 && target >= 20) say = 'Ten seconds.';
       else if (left * 2 === target && target >= 20) say = 'Halfway!';
-      else if (left > 10 && left % 15 === 0 && left !== target) say = KEEP_GOING[(left / 15) % KEEP_GOING.length];
     }
   } else if (fresh) {
-    say = s.type === 'rest' ? `Rest. Next, ${s.next.name}.` : s.type === 'switch' ? 'Switch sides.' : `Get ready. ${s.next.name}.`;
+    say = s.type === 'rest' ? `${finishing}Rest.` : s.type === 'switch' ? `${finishing}Switch sides.` : '3';
   } else if (s.remainingSec !== prev.remainingSec && s.remainingSec <= 3 && s.remainingSec > 0) say = String(s.remainingSec);
   return { say, mark };
 }

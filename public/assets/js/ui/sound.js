@@ -15,6 +15,22 @@ const BARS = [
 const ARP = [0, 1, 2, 1, 0, 2, 1, 2, 0, 1, 2, 1, 2, 1, 0, 2];
 const hz = (midi) => 440 * 2 ** ((midi - 69) / 12);
 
+// Voices that sound most natural, best first. Devices differ, so this is a preference list:
+// the newer "natural", "enhanced" and "premium" voices, then well-known good ones.
+const VOICE_HINTS = [/natural/i, /neural/i, /premium/i, /enhanced/i, /siri/i, /google (uk|us) english/i, /\b(moira|samantha|karen|daniel|serena|ava|allison|susan|tessa)\b/i];
+
+/** The best English voice this device offers, or null to use its default. */
+export function pickVoice(voices) {
+  const english = (voices ?? []).filter((v) => /^en([-_]|$)/i.test(v.lang ?? ''));
+  if (!english.length) return null;
+  const score = (v) => {
+    const hint = VOICE_HINTS.findIndex((re) => re.test(v.name ?? ''));
+    // A hinted voice first; then Irish and British English; a voice stored on the device as a tie-break.
+    return (hint < 0 ? VOICE_HINTS.length : hint) * 10 + (/^en[-_](IE|GB)/i.test(v.lang) ? 0 : 2) + (v.localService ? 0 : 1);
+  };
+  return english.reduce((best, v) => (score(v) < score(best) ? v : best));
+}
+
 export function createSound() {
   let ctx = null;
   let master = null;
@@ -27,6 +43,19 @@ export function createSound() {
   let voiceOn = false;
   let muted = false;
   let level = 1;
+  let voice = null;
+  const loadVoice = () => {
+    try {
+      voice = pickVoice(window.speechSynthesis.getVoices());
+    } catch {
+      voice = null;
+    }
+  };
+  if ('speechSynthesis' in window) {
+    loadVoice();
+    // Most browsers fill in the list of voices a moment after the page loads.
+    window.speechSynthesis.addEventListener?.('voiceschanged', loadVoice);
+  }
 
   function envelope(node, time, peak, length) {
     node.gain.setValueAtTime(0.0001, time);
@@ -133,9 +162,14 @@ export function createSound() {
       if (!voiceOn || muted || !text) return;
       try {
         const u = new SpeechSynthesisUtterance(text);
-        u.lang = 'en-IE';
-        u.rate = 1.05;
-        u.pitch = 1.1;
+        if (voice) {
+          u.voice = voice;
+          u.lang = voice.lang;
+        } else u.lang = 'en-IE';
+        // A natural pace and pitch: pushing either makes speech sound more mechanical.
+        u.rate = 1;
+        u.pitch = 1;
+        u.volume = 1;
         // A count that is already late is dropped rather than queued behind the last one.
         if (window.speechSynthesis.speaking || window.speechSynthesis.pending) window.speechSynthesis.cancel();
         window.speechSynthesis.speak(u);
