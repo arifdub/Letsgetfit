@@ -272,6 +272,7 @@ export function initFood(store) {
     state = next;
     lastTrigger = trigger ?? null;
     renderPanel();
+    if (state?.autoCamera) state = { ...state, autoCamera: false };
     panel.hidden = false;
     panel.scrollIntoView({ block: 'start' });
     $('#food-panel-title').focus();
@@ -353,6 +354,7 @@ export function initFood(store) {
       body.push(
         scanPanel({
           mode: state.tab === 'describe' ? 'text' : 'photo',
+          autoCamera: Boolean(state.autoCamera),
           store,
           meal: state.meal,
           localDate: currentDate,
@@ -761,10 +763,18 @@ export function initFood(store) {
   });
   render();
   return {
-    openToday(meal) {
+    /** Whether photo scan and "describe" are switched on for this site. */
+    canScan: () => scanAvailable,
+    /**
+     * @param {string} meal
+     * @param {'search'|'scan'|'describe'|'mine'} [tab]
+     * @param {{ camera?: boolean }} [options] camera: open the camera straight away (scan only)
+     */
+    openToday(meal, tab = 'search', { camera = false } = {}) {
       setDate(toLocalDateString());
       const trigger = $(`[data-add-meal="${meal}"]`);
-      openPanel({ step: 'choose', meal, tab: searchAvailable === false ? 'mine' : 'search' }, trigger);
+      const wanted = (tab === 'scan' || tab === 'describe') && !scanAvailable ? 'search' : tab;
+      openPanel({ step: 'choose', meal, tab: wanted === 'search' && searchAvailable === false ? 'mine' : wanted, autoCamera: camera && wanted === 'scan' }, trigger);
     },
   };
 }

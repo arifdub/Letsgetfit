@@ -99,6 +99,7 @@ All must be done and signed off by the controller. The person running letsgetfit
 - Its output is sanitised. Nutrient values come from the food database; only when a food has no database match is the AI's rough estimate (energy, protein, carbohydrate, fat, fibre) used, and it is labelled “AI estimate”.
 - API keys live only in the private settings file, or encrypted in the database when set in the admin panel.
 - The consent text names the AI service in use (both when alternating), from `/api/health.php` → `scanProviders`.
+- The photo explanation is shown before the first photo is sent from a device. Agreeing is remembered on that device (`letsgetfit.scanConsent` in `localStorage`), so later photos are analysed straight away; clearing site data asks again. The server still requires the `X-Scan-Consent` header on every request. **To review:** whether a way to withdraw this from Settings is needed before launch.
 - Comparison statistics (`storage/scan-stats/YYYY-MM.json`) hold only counts per provider and model: scans, errors, time, tokens, foods found, and kept/changed/removed/added counts from saves. No photos, food names, IP addresses or identifiers.
 
 **Before switching it on**, add these to the launch checklist:

@@ -7,6 +7,8 @@ import { formatLocalDate, toLocalDateString } from '../lib/dates.js';
 import { $, h, formatNumber } from './dom.js';
 import { diaryEnergyReference } from './food.js';
 import { appleGauge, summaryBar } from './chart.js';
+import { icon } from './icons.js';
+import { workoutBurnedKcal, energyBalance } from '../lib/activities.js';
 
 function energyLabel({ totals, missing, count }) {
   if (count > 0 && missing.energy === count) return 'Unknown';
@@ -45,9 +47,13 @@ export function initDashboard(store, addFood, addExercise) {
     const remaining = comparable ? reference.kcal - logged : 0;
     const over = comparable && remaining < 0;
     const guide = reference?.kcal > 0 && store.profile?.weightKg > 0 ? maintenanceExample(reference.kcal, store.profile.weightKg) : null;
-    const minutes = store.workouts
-      .filter((workout) => workout.localDate === today)
-      .reduce((sum, workout) => sum + (Number.isFinite(workout.durationMin) ? workout.durationMin : 0), 0);
+    const todays = store.workouts.filter((workout) => workout.localDate === today);
+    const minutes = todays.reduce((sum, workout) => sum + (Number.isFinite(workout.durationMin) ? workout.durationMin : 0), 0);
+    const weightKg = store.profile?.weightKg ?? store.weights[0]?.weightKg ?? null;
+    const burned = todays.reduce((sum, workout) => sum + (workoutBurnedKcal(workout, weightKg) ?? 0), 0);
+    const balance = comparable ? energyBalance({ budgetKcal: reference.kcal, eatenKcal: logged, burnedKcal: burned }) : null;
+    const chip = (id, name, label, value, tone = '') =>
+      h('div', { class: `energy-chip${tone ? ` energy-chip--${tone}` : ''}`, id: `dashboard-${id}` }, icon(name), h('dt', {}, label), h('dd', {}, value));
 
     host.replaceChildren(
       h('p', { class: 'dashboard-date' }, `Today · ${formatLocalDate(today)}`),
@@ -75,15 +81,20 @@ export function initDashboard(store, addFood, addExercise) {
             day.missing.energy > 0 ? h('p', { class: 'muted small' }, 'Some calorie values are missing.') : null,
           ),
         ),
+        h('dl', { class: 'energy-chips', 'aria-label': 'Calories eaten, burned and the balance for today' },
+          chip('eaten', 'apple', 'Eaten', energyLabel(day)),
+          chip('burned', 'flame', 'Burned', `${formatNumber(burned)} kcal`),
+          chip('balance', 'balance', balance ? (balance.kind === 'surplus' ? 'Surplus' : balance.kind === 'deficit' ? 'Deficit' : 'Balance') : 'Balance', balance ? `${formatNumber(balance.kcal)} kcal` : '—', balance?.kind === 'surplus' ? 'over' : balance?.kind === 'deficit' ? 'under' : ''),
+        ),
         h('div', { class: 'dashboard-card-head dashboard-macros-head' }, h('h3', {}, 'Macros'), h('span', { class: 'muted small' }, guide ? 'Logged today, against a guide amount' : 'Logged today')),
         h('dl', { class: 'macro-grid', 'aria-label': 'Macronutrients and fibre' }, macroTiles(day, guide)),
       ),
       h('div', { class: 'dashboard-log-grid' },
         h('section', { class: 'card dashboard-activity', 'aria-labelledby': 'dashboard-activity-title' },
-          h('h2', { id: 'dashboard-activity-title' }, 'Activity'),
+          h('h2', { id: 'dashboard-activity-title' }, icon('exercise'), ' Activity'),
           h('p', { class: 'stat__value' }, `${formatNumber(minutes)} min`),
-          h('p', { class: 'muted small' }, 'Logged today'),
-          h('button', { type: 'button', class: 'button button--small', onclick: addExercise }, 'Log exercise'),
+          h('p', { class: 'muted small' }, burned > 0 ? `${formatNumber(burned)} kcal burned today` : 'Logged today'),
+          h('button', { type: 'button', class: 'button button--small', onclick: () => addExercise() }, 'Log exercise'),
         ),
         h('section', { class: 'card', 'aria-labelledby': 'dashboard-meals-title' },
           h('h2', { id: 'dashboard-meals-title' }, 'Meals'),
@@ -91,6 +102,7 @@ export function initDashboard(store, addFood, addExercise) {
             const mealDay = sumNutrients(entries.filter((entry) => entry.meal === meal.id));
             return h('li', {},
               h('button', { type: 'button', class: 'dashboard-meal', onclick: () => addFood(meal.id) },
+                icon(meal.id),
                 h('strong', {}, meal.label),
                 h('span', {}, mealDay.count ? energyLabel(mealDay) : 'Add food'),
                 h('span', { class: 'dashboard-meal-plus', 'aria-hidden': 'true' }, '+'),

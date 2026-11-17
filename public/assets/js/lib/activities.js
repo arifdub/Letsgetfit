@@ -52,6 +52,30 @@ export function estimateActiveKcal({ met, weightKg, durationMin }) {
   return (met - 1) * weightKg * (durationMin / 60);
 }
 
+export const MAX_BURNED_KCAL = 5000;
+
+/**
+ * Calories burned in one logged workout: the person's own figure if they entered one, otherwise
+ * the MET estimate saved with it, otherwise a fresh MET estimate from the weight given.
+ * Null when there is nothing to go on (for example "Other activity" with no figure).
+ */
+export function workoutBurnedKcal(workout, weightKg) {
+  if (Number.isFinite(workout?.burnedKcal) && workout.burnedKcal > 0) return workout.burnedKcal;
+  if (Number.isFinite(workout?.estimatedActiveKcal) && workout.estimatedActiveKcal > 0) return workout.estimatedActiveKcal;
+  const met = workout?.metUsed ?? getActivity(workout?.activityId)?.met ?? null;
+  return roundActiveKcal(estimateActiveKcal({ met, weightKg: workout?.weightKgUsed ?? weightKg, durationMin: workout?.durationMin }));
+}
+
+/**
+ * The day's energy balance against the budget: budget − eaten + burned. Positive is a deficit,
+ * negative a surplus. Null when there is no budget to compare with.
+ */
+export function energyBalance({ budgetKcal, eatenKcal, burnedKcal }) {
+  if (!Number.isFinite(budgetKcal) || budgetKcal <= 0 || !Number.isFinite(eatenKcal)) return null;
+  const kcal = Math.round(budgetKcal - eatenKcal + (Number.isFinite(burnedKcal) ? burnedKcal : 0));
+  return { kcal: Math.abs(kcal), kind: kcal > 0 ? 'deficit' : kcal < 0 ? 'surplus' : 'even' };
+}
+
 /** Rounded to the nearest 5 kcal for display. */
 export function roundActiveKcal(kcal) {
   return kcal === null ? null : Math.round(kcal / 5) * 5;

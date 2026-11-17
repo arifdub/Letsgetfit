@@ -10,6 +10,24 @@ import { createId } from '../storage/store.js';
 import { h, formatNumber, toast } from './dom.js';
 
 const MAX_SIDE = 1600;
+const CONSENT_KEY = 'letsgetfit.scanConsent';
+
+/** Whether this person has already agreed to photos being sent for analysis on this device. */
+function hasConsented() {
+  try {
+    return localStorage.getItem(CONSENT_KEY) === 'yes';
+  } catch {
+    return false;
+  }
+}
+
+function rememberConsent() {
+  try {
+    localStorage.setItem(CONSENT_KEY, 'yes');
+  } catch {
+    /* asked again next time */
+  }
+}
 
 /** Re-encode in the browser: applies orientation, shrinks, and drops all photo metadata. */
 export async function preparePhoto(file) {
@@ -43,7 +61,7 @@ export function providerText(list) {
   return `${list.map(providerName).join(' or ')} (the site uses both, to compare them)`;
 }
 
-export function scanPanel({ store, meal, localDate, saveToLibrary, onSaved, onManual, mode = 'photo' }) {
+export function scanPanel({ store, meal, localDate, saveToLibrary, onSaved, onManual, mode = 'photo', autoCamera = false }) {
   const isText = mode === 'text';
   let providers = [];
   getScanProviders().then((list) => {
@@ -145,19 +163,26 @@ export function scanPanel({ store, meal, localDate, saveToLibrary, onSaved, onMa
     cleanup();
     previewUrl = URL.createObjectURL(photo);
     requestId = createId(); // one ID per photo: a retry or double tap never charges twice
-    renderConsent();
+    // The explanation is shown the first time; after that a photo is analysed straight away.
+    if (hasConsented()) analyseNow(null);
+    else renderConsent();
   }
 
   /* ---------- Step 2: consent ---------- */
   function renderConsent(message) {
-    const analyse = h('button', { type: 'button', class: 'button button--primary', id: 'scan-analyse' }, 'Send photo and analyse');
-    analyse.addEventListener('click', () => analyseNow(analyse));
+    // Once agreed on this device, this screen is only seen after a failed scan, as a retry.
+    const agreed = hasConsented();
+    const analyse = h('button', { type: 'button', class: 'button button--primary', id: 'scan-analyse' }, agreed ? 'Scan again' : 'Send photo and analyse');
+    analyse.addEventListener('click', () => {
+      rememberConsent();
+      analyseNow(analyse);
+    });
     const other = h('button', { type: 'button', class: 'button button--ghost' }, 'Choose another photo');
     other.addEventListener('click', () => renderPick());
     show(
       h('img', { src: previewUrl, alt: 'Your meal photo', class: 'scan-preview' }),
       message ? h('p', { class: 'notice-inline notice-inline--error', id: 'scan-error', role: 'alert' }, message) : null,
-      h(
+      agreed ? null : h(
         'div',
         { class: 'notice-inline', id: 'scan-consent' },
         h('p', {}, h('strong', {}, 'Before you send this photo')),
@@ -167,6 +192,7 @@ export function scanPanel({ store, meal, localDate, saveToLibrary, onSaved, onMa
           h('li', { id: 'scan-provider-text' }, `It goes to our server, which removes location and camera details, and then to ${providerText(providers)}, which suggests the foods and amounts.`),
           h('li', {}, `We do not keep the photo. ${providers.length > 1 ? 'Both companies say they do' : `${providerName(providers[0])} says it does`} not use API data to train ${providers.length > 1 ? 'their models' : 'its models'}, and may keep it for a limited time to check for abuse.`),
           h('li', {}, 'Suggestions can be wrong. A photo cannot show allergens, exact amounts or hidden ingredients.'),
+          h('li', {}, 'You are asked once on this device. After that, photos you take here are analysed straight away.'),
         ),
         h('p', { class: 'small' }, 'Do not send photos of people or anything private. ', h('a', { href: 'privacy.html' }, 'Privacy notice'), '.'),
       ),
@@ -178,13 +204,15 @@ export function scanPanel({ store, meal, localDate, saveToLibrary, onSaved, onMa
 
   async function analyseNow(button) {
     if (controller) return; // already sending
-    button.disabled = true;
+    if (button) button.disabled = true;
     controller = new AbortController();
     const cancel = h('button', { type: 'button', class: 'button button--ghost', id: 'scan-cancel' }, 'Cancel');
     cancel.addEventListener('click', () => controller?.abort());
     show(
-      isText ? h('blockquote', { class: 'describe-quote' }, description) : h('img', { src: previewUrl, alt: 'Your meal photo', class: 'scan-preview' }),
-      h('p', { class: 'state state--loading', role: 'status', id: 'scan-loading' }, isText ? 'Working out the foods and amounts…' : 'Analysing your photo. This can take up to 30 seconds…'),
+      isText
+        ? h('blockquote', { class: 'describe-quote' }, description)
+        : h('div', { class: 'scan-frame', id: 'scan-frame' }, h('img', { src: previewUrl, alt: 'Your meal photo', class: 'scan-preview' }), h('span', { class: 'scan-frame__corners', 'aria-hidden': 'true' }), h('span', { class: 'scan-frame__line', 'aria-hidden': 'true' })),
+      h('p', { class: 'state state--loading', role: 'status', id: 'scan-loading' }, isText ? 'Working out the foods and amounts…' : 'Scanning your meal…'),
       h('div', { class: 'form__actions' }, cancel),
     );
     try {
@@ -282,6 +310,16 @@ export function scanPanel({ store, meal, localDate, saveToLibrary, onSaved, onMa
       row.grams = Number(grams.value.replace(',', '.'));
       renderTotals(root.querySelector('#scan-totals'));
     });
+    const nudge = (by, label, sign) => {
+      const b = h('button', { type: 'button', class: 'button button--small stepper-button', id: `scan-${by < 0 ? 'less' : 'more'}-${i}`, 'aria-label': `${label} ${row.name}` }, sign);
+      b.addEventListener('click', () => {
+        const now = Number.isFinite(row.grams) ? row.grams : 0;
+        row.grams = Math.min(5000, Math.max(1, Math.round(now + by)));
+        grams.value = String(row.grams);
+        renderTotals(root.querySelector('#scan-totals'));
+      });
+      return b;
+    };
     const remove = h('button', { type: 'button', class: 'button button--small button--danger-ghost', 'aria-label': `Remove ${row.name}` }, 'Remove');
     const finder = matchFinder(row, i);
     remove.addEventListener('click', () => {
@@ -298,8 +336,10 @@ export function scanPanel({ store, meal, localDate, saveToLibrary, onSaved, onMa
         'div',
         { class: 'inline-inputs' },
         h('label', { for: `scan-grams-${i}` }, 'Amount'),
+        nudge(-10, '10 grams less of', '−'),
         grams,
         h('span', { class: 'unit' }, 'g'),
+        nudge(10, '10 grams more of', '+'),
       ),
       h('p', { class: 'hint', id: `scan-range-${i}` }, `Estimated ${formatNumber(row.low)}–${formatNumber(row.high)} g. Weigh it if you can.`),
       finder,
@@ -487,5 +527,7 @@ export function scanPanel({ store, meal, localDate, saveToLibrary, onSaved, onMa
   }
 
   renderPick();
+  // From the "Meal scan" shortcut: go straight to the camera (this runs inside that tap).
+  if (autoCamera && !isText) root.querySelector('#scan-camera')?.click();
   return root;
 }

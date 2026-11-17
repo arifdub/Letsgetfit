@@ -111,7 +111,12 @@ test('workout validation', () => {
   const today = '2026-11-09';
   const ok = validateWorkout({ localDate: '2026-11-09', activityId: 'walk-brisk', durationMin: '30', notes: '  lunch walk ' }, today);
   assert.equal(ok.ok, true);
-  assert.deepEqual(ok.value, { localDate: '2026-11-09', activityId: 'walk-brisk', durationMin: 30, notes: 'lunch walk', showEstimate: false });
+  assert.deepEqual(ok.value, { localDate: '2026-11-09', activityId: 'walk-brisk', durationMin: 30, notes: 'lunch walk', showEstimate: false, burnedKcal: null });
+  // Calories burned are optional: a whole number from 1 to 5,000.
+  const w = (burnedKcal) => validateWorkout({ localDate: '2026-11-09', activityId: 'other', durationMin: '30', burnedKcal }, today);
+  assert.equal(w('320').value.burnedKcal, 320);
+  assert.equal(w('  ').value.burnedKcal, null);
+  for (const bad of ['0', '-5', '12.5', '5001', 'lots']) assert.ok(w(bad).errors.burnedKcal, bad);
   const bad = validateWorkout({ localDate: '2026-11-10', activityId: 'nope', durationMin: '0' }, today);
   assert.deepEqual(Object.keys(bad.errors).sort(), ['activityId', 'durationMin', 'localDate']);
   assert.ok(validateWorkout({ localDate: '2026-02-30', activityId: 'yoga', durationMin: '20' }, today).errors.localDate);

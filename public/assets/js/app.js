@@ -1,6 +1,7 @@
 // LetsGetFit entry point: wires storage to the views and handles hash routing.
 // Phase 1 runs entirely in the browser with no server.
 
+import { icon } from './ui/icons.js';
 import { Store } from './storage/store.js';
 import { initOverview } from './ui/overview.js';
 import { initWorkouts, initWeights } from './ui/logs.js';
@@ -67,27 +68,48 @@ function start() {
     if (location.hash !== `#${route}`) history.pushState(null, '', `#${route}`);
     showRoute(route, { focus: false });
   }
-  function addFood(meal) {
+  function addFood(meal, tab, options) {
     navigate('food');
-    food.openToday(meal);
+    food.openToday(meal, tab, options);
   }
 
-  function addExercise() {
+  function addExercise(options) {
     navigate('workouts');
-    void workouts.openQuickAdd();
+    void workouts.openQuickAdd(options);
   }
 
   const dashboard = initDashboard(store, addFood, addExercise);
   const quickAdd = $('#quick-add-dialog');
   const mealPicker = $('#quick-meal');
   mealPicker.replaceChildren(...MEALS.map((meal) => h('option', { value: meal.id }, meal.label)));
+  // Shortcuts: round icon buttons for the ways to add food, and tiles for exercise.
+  // Each acts straight from the tap, so "Meal scan" can open the camera at once.
+  const shortcut = (id, name, label, className, run) => {
+    const b = h('button', { type: 'button', class: className, dataset: { shortcut: id } }, h('span', { class: 'shortcut__icon' }, icon(name)), h('span', { class: 'shortcut__label' }, label));
+    b.addEventListener('click', () => {
+      quickAdd.close('done');
+      run();
+    });
+    return b;
+  };
+  const defaultMeal = () => {
+    const hour = new Date().getHours();
+    return hour < 11 ? 'breakfast' : hour < 15 ? 'lunch' : hour < 21 ? 'dinner' : 'snacks';
+  };
   $('#quick-add').addEventListener('click', () => {
-    quickAdd.returnValue = '';
+    mealPicker.value = defaultMeal();
+    const canScan = food.canScan();
+    $('#shortcut-food').replaceChildren(
+      shortcut('search', 'search', 'Search', 'shortcut', () => addFood(mealPicker.value, 'search')),
+      canScan ? shortcut('scan', 'scan', 'Meal scan', 'shortcut shortcut--accent', () => addFood(mealPicker.value, 'scan', { camera: true })) : null,
+      canScan ? shortcut('describe', 'describe', 'Describe', 'shortcut', () => addFood(mealPicker.value, 'describe')) : null,
+      shortcut('mine', 'list', 'My foods', 'shortcut', () => addFood(mealPicker.value, 'mine')),
+    );
+    $('#shortcut-more').replaceChildren(
+      shortcut('exercise', 'exercise', 'Exercise', 'shortcut-tile', () => addExercise()),
+      shortcut('burned', 'flame', 'Calories burned', 'shortcut-tile', () => addExercise({ focus: 'burnedKcal' })),
+    );
     quickAdd.showModal();
-  });
-  quickAdd.addEventListener('close', () => {
-    if (quickAdd.returnValue === 'food') addFood(mealPicker.value);
-    if (quickAdd.returnValue === 'exercise') addExercise();
   });
 
   onRoute = (route) => {

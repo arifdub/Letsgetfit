@@ -3,7 +3,7 @@
 
 import { feetInchesToCm, stonePoundsToKg, roundTo } from './units.js';
 import { getActivityLevel, SEX_COEFFICIENTS } from './energy.js';
-import { getActivity, MAX_DURATION_MIN } from './activities.js';
+import { getActivity, MAX_DURATION_MIN, MAX_BURNED_KCAL } from './activities.js';
 import { isValidLocalDate, toLocalDateString } from './dates.js';
 
 export const LIMITS = Object.freeze({
@@ -137,11 +137,18 @@ export function validateWorkout(raw, today = toLocalDateString()) {
   else if (!Number.isInteger(duration) || duration < 1 || duration > MAX_DURATION_MIN)
     errors.durationMin = `Enter a whole number of minutes from 1 to ${MAX_DURATION_MIN}.`;
   const notes = typeof raw.notes === 'string' ? raw.notes.trim().slice(0, 200) : '';
+  // Optional: the person's own figure, for example from a watch or a machine.
+  let burnedKcal = null;
+  if (raw.burnedKcal !== undefined && String(raw.burnedKcal).trim() !== '') {
+    const burned = parseNumber(String(raw.burnedKcal));
+    if (!Number.isFinite(burned) || !Number.isInteger(burned) || burned < 1 || burned > MAX_BURNED_KCAL) errors.burnedKcal = `Enter calories burned as a whole number from 1 to ${MAX_BURNED_KCAL}, or leave it blank.`;
+    else burnedKcal = burned;
+  }
   if (Object.keys(errors).length > 0) return { ok: false, errors, value: null };
   return {
     ok: true,
     errors: {},
-    value: { localDate: raw.localDate, activityId: activity.id, durationMin: duration, notes, showEstimate: Boolean(raw.showEstimate) },
+    value: { localDate: raw.localDate, activityId: activity.id, durationMin: duration, notes, showEstimate: Boolean(raw.showEstimate), burnedKcal },
   };
 }
 

@@ -809,7 +809,7 @@ main { padding-top: clamp(1.25rem, 4vw, 2.5rem); }
 .dashboard-meals { padding: 0; margin: 0; list-style: none; }
 .dashboard-meal {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
   align-items: center;
   text-align: start;
   gap: 0.55rem;
@@ -1010,3 +1010,36 @@ rect.fig-prop-mat { fill: #9ad4c6; }
 .macro__value { display: block; }
 .macro__left { display: block; margin-top: 0.3rem; font-size: 0.75rem; font-weight: 600; color: var(--text-muted); }
 .macro .summary-bar__fill { fill: var(--macro-colour); }
+
+/* ---------- Icons, shortcuts sheet, scan effect, energy chips ---------- */
+.icon { width: 1.5rem; height: 1.5rem; flex: 0 0 auto; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; vertical-align: -0.3em; }
+
+.quick-add-meal { display: flex; align-items: center; gap: 0.6rem; margin-block: 0.75rem 1rem; }
+.quick-add-meal label { font-weight: 650; flex: 0 0 auto; }
+.quick-add-meal .input { flex: 1 1 auto; min-width: 0; }
+.shortcut-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(4.5rem, 1fr)); gap: 0.5rem; }
+.shortcut { display: grid; justify-items: center; gap: 0.4rem; padding: 0.25rem 0; border: 0; background: none; color: var(--text); font: inherit; font-size: 0.85rem; font-weight: 650; cursor: pointer; }
+.shortcut__icon { display: grid; place-items: center; width: 3.75rem; height: 3.75rem; border-radius: 50%; background: var(--surface-2); border: 1px solid var(--border); color: var(--primary); }
+.shortcut__icon .icon { width: 1.75rem; height: 1.75rem; }
+.shortcut--accent .shortcut__icon { background: var(--primary); border-color: var(--primary); color: var(--on-primary, #ffffff); }
+.shortcut:hover .shortcut__icon, .shortcut:focus-visible .shortcut__icon { border-color: var(--primary); }
+.shortcut:focus-visible, .shortcut-tile:focus-visible { outline: 3px solid var(--primary); outline-offset: 3px; border-radius: 0.75rem; }
+.shortcut-tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.6rem; margin-top: 1rem; }
+.shortcut-tile { display: flex; align-items: center; gap: 0.6rem; min-height: 56px; padding: 0.6rem 0.8rem; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface-2); color: var(--text); font: inherit; font-weight: 650; text-align: start; cursor: pointer; }
+.shortcut-tile .shortcut__icon { width: auto; height: auto; border: 0; background: none; }
+.shortcut-tile:hover { border-color: var(--primary); }
+
+.scan-frame { position: relative; display: inline-block; max-width: 100%; overflow: hidden; border-radius: var(--radius); line-height: 0; }
+.scan-frame .scan-preview { display: block; margin: 0; }
+.scan-frame__corners { position: absolute; inset: 0.6rem; border-radius: 0.9rem; border: 3px solid rgb(255 255 255 / 0.9); box-shadow: 0 0 0 100vmax rgb(0 0 0 / 0.18); }
+.scan-frame__line { position: absolute; inset-inline: 0.6rem; top: 0; height: 22%; background: linear-gradient(to bottom, rgb(120 240 190 / 0), rgb(120 240 190 / 0.55)); border-bottom: 3px solid #7df0be; animation: scan-sweep 1.8s ease-in-out infinite alternate; }
+@keyframes scan-sweep { from { transform: translateY(-20%); } to { transform: translateY(380%); } }
+@media (prefers-reduced-motion: reduce) { .scan-frame__line { animation: none; top: 39%; } }
+.stepper-button { min-width: 44px; min-height: 44px; font-size: 1.25rem; line-height: 1; padding: 0; }
+
+.energy-chips { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.5rem; margin: 0 0 1rem; }
+.energy-chip { display: grid; justify-items: center; gap: 0.15rem; padding: 0.6rem 0.3rem; text-align: center; background: var(--surface-2); border: 1px solid var(--border); border-radius: 0.85rem; color: var(--primary); }
+.energy-chip dt { font-size: 0.78rem; font-weight: 700; color: var(--text-muted); }
+.energy-chip dd { margin: 0; font-weight: 800; font-size: 0.95rem; color: var(--text); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.energy-chip--over { color: var(--danger); }
+.dashboard-meal .icon { color: var(--primary); width: 1.3rem; height: 1.3rem; }

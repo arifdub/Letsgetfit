@@ -127,3 +127,10 @@
 
 - Today's nutrition shows an apple that fills from the bottom with the share of the daily budget logged (`appleGauge` in `ui/chart.js`): empty at 0, and red with "kcal over" once the budget is passed. The budget is the same figure as the food diary's (goal budget if a goal is set, otherwise estimated maintenance).
 - Macro tiles show grams logged, a bar, the percent of a guide amount and the grams left (`macroProgress` in `lib/nutrition.js`). The guide amounts are the example split already used on the goals page (`maintenanceExample`), not a prescription.
+
+## Shortcuts, camera-first meal scan and calories burned
+
+- The + button opens **Shortcuts**: icon buttons for Search, Meal scan, Describe and My foods (scan and describe only when the server offers them), and tiles for Exercise and Calories burned (`ui/icons.js` holds the line icons).
+- **Meal scan** opens the camera from the tap. The explanation is shown once per device; after that a photo goes straight to a scanning view (a sweep over the photo, still under `prefers-reduced-motion`) and then the review, where amounts have − / + buttons (10 g).
+- Activities can carry the person's own **calories burned**; the dashboard shows Eaten, Burned and the Deficit or Surplus (see `docs/FORMULAS.md`). The field is additive and optional, so the storage schema version is unchanged.
+- Not done in this pass: the other pages (Overview form, Food diary, Workouts, Progress, Settings) are still text-heavy.

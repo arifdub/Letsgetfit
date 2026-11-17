@@ -222,13 +222,19 @@
           <select id="workout-activity" name="activityId" class="input" aria-describedby="workout-activityId-error" required></select>
           <p class="field-error" id="workout-activityId-error" hidden></p>
         </div>
+        <div class="field" data-field="burnedKcal">
+          <label for="workout-burned">Calories burned <span class="unit">kcal, optional</span></label>
+          <input id="workout-burned" name="burnedKcal" type="text" inputmode="numeric" autocomplete="off" class="input input--short" aria-describedby="workout-burned-hint workout-burnedKcal-error">
+          <p class="hint" id="workout-burned-hint">From your watch or a machine. Leave it blank to use an estimate.</p>
+          <p class="field-error" id="workout-burnedKcal-error" hidden></p>
+        </div>
         <div class="field">
           <label for="workout-notes">Notes <span class="unit">optional</span></label>
           <input id="workout-notes" name="notes" type="text" maxlength="200" class="input" autocomplete="off">
         </div>
         <div class="field">
           <label class="checkbox"><input type="checkbox" name="showEstimate" id="workout-estimate" aria-describedby="workout-estimate-hint"> Show estimated active calories</label>
-          <p class="hint" id="workout-estimate-hint">An average for the activity using its MET value and your weight. It is for interest only and is not added to your daily estimate.</p>
+          <p class="hint" id="workout-estimate-hint">An average for the activity using its MET value and your weight.</p>
         </div>
         <div class="form__actions">
           <button type="submit" class="button button--primary" id="workout-submit">Add workout</button>
@@ -390,15 +396,15 @@
   <dialog id="quick-add-dialog" class="dialog quick-add-dialog" aria-labelledby="quick-add-title">
     <form method="dialog">
       <div class="quick-add-head">
-        <h2 id="quick-add-title">Quick add</h2>
+        <h2 id="quick-add-title">Shortcuts</h2>
         <button type="submit" class="button button--small button--ghost" value="cancel" autofocus>Close</button>
       </div>
-      <div class="quick-add-food">
-        <label for="quick-meal">Meal</label>
+      <div class="quick-add-meal">
+        <label for="quick-meal">Add food to</label>
         <select id="quick-meal" class="input"></select>
-        <button type="submit" class="button button--primary" value="food">Log food</button>
       </div>
-      <button type="submit" class="button quick-add-exercise" value="exercise">Log exercise</button>
+      <div class="shortcut-grid" id="shortcut-food"></div>
+      <div class="shortcut-tiles" id="shortcut-more"></div>
     </form>
   </dialog>
 

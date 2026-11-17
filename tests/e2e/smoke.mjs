@@ -238,7 +238,7 @@ await check('workouts: add, estimate, edit, delete, and persist after reload', a
   await page.click('#workout-submit');
   await page.waitForSelector('#workout-list .entry');
   // (3.5 − 1) × 80 kg × 0.5 h = 100 kcal
-  assert.match(await page.textContent('#workout-list .entry'), /About 100 kcal active energy/);
+  assert.match(await page.textContent('#workout-list .entry'), /About 100 kcal burned \(estimate\)/);
   await page.reload();
   await page.click('.primary-nav a[data-route="workouts"]');
   await page.waitForSelector('#workout-list .entry');
@@ -394,7 +394,7 @@ await check('dashboard: the calorie apple is empty, fills with the share of the 
   assert.match(await page.textContent('[data-macro="protein"]'), /0 g.*0% · \d+ g left/s);
   // Log a quarter of the budget.
   await page.click('#quick-add');
-  await page.getByRole('button', { name: 'Log food' }).click();
+  await page.click('[data-shortcut="search"]');
   await page.click('[data-tab="new"]');
   await page.fill('#cf-name', 'Apple test meal');
   await page.fill('#cf-n_energy', '500');
@@ -429,12 +429,62 @@ await check('dashboard: the calorie apple is empty, fills with the share of the 
   await context.close();
 });
 
+await check('calories burned: logged from the shortcut, shown on the dashboard with eaten and the deficit or surplus', async () => {
+  const { page, context, errors } = await freshPage();
+  await fillMetric(page);
+  await page.waitForSelector('#dashboard-budget');
+  const budget = Number((await page.textContent('#dashboard-budget')).replace(/[^0-9]/g, ''));
+  const kcal = (id) => page.textContent(`#dashboard-${id} dd`);
+  assert.deepEqual([await kcal('eaten'), await kcal('burned'), await kcal('balance')], ['0 kcal', '0 kcal', `${budget.toLocaleString('en-IE')} kcal`]);
+  assert.equal(await page.textContent('#dashboard-balance dt'), 'Deficit');
+  // The shortcut goes straight to the calories field.
+  await page.click('#quick-add');
+  await page.click('[data-shortcut="burned"]');
+  await page.waitForFunction(() => document.activeElement.id === 'workout-burned');
+  await page.selectOption('#workout-activity', 'other');
+  await page.fill('#workout-duration', '40');
+  await page.fill('#workout-burned', 'many');
+  await page.click('#workout-submit');
+  assert.match(await page.textContent('#workout-burnedKcal-error'), /whole number from 1 to 5000/);
+  await page.fill('#workout-burned', '350');
+  await page.click('#workout-submit');
+  assert.match(await page.textContent('#workout-list'), /350 kcal burned \(your figure\)/);
+  // A second activity without a figure uses the estimate from its type, duration and weight.
+  await page.selectOption('#workout-activity', 'walk-brisk');
+  await page.fill('#workout-duration', '30');
+  await page.click('#workout-submit');
+  const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('letsgetfit.data')).workouts);
+  assert.deepEqual(stored.map((w) => w.burnedKcal).sort(), [350, null]);
+  await page.click('.primary-nav [data-route="overview"]');
+  const burned = Number((await kcal('burned')).replace(/[^0-9]/g, ''));
+  assert.ok(burned > 350 && burned < 700, `350 plus a walking estimate, not ${burned}`);
+  assert.equal(await kcal('balance'), `${(budget + burned).toLocaleString('en-IE')} kcal`);
+  assert.match(await page.textContent('.dashboard-activity'), /70 min/);
+  // Eating more than the budget plus what was burned shows a surplus.
+  await page.click('#quick-add');
+  await page.click('[data-shortcut="search"]');
+  await page.click('[data-tab="new"]');
+  await page.fill('#cf-name', 'Big meal');
+  await page.fill('#cf-n_energy', '500');
+  await page.click('#custom-food-form button[type="submit"]');
+  await page.fill('#amount-g', String(Math.round((budget + burned + 200) / 5)));
+  await page.click('#amount-save');
+  await page.click('.primary-nav [data-route="overview"]');
+  assert.equal(await page.textContent('#dashboard-balance dt'), 'Surplus');
+  assert.match(await kcal('balance'), /^(19\d|20\d) kcal$/);
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
 await check('quick add opens today’s food and exercise forms and updates the Dashboard', async () => {
   const { page, context } = await freshPage();
-  await page.locator('#daily-dashboard').getByText('0 kcal', { exact: true }).waitFor();
+  await page.locator('#dashboard-logged').getByText('0 kcal', { exact: true }).waitFor();
   await page.click('#quick-add');
+  // Icon shortcuts: no scan or describe unless the server offers them.
+  assert.deepEqual(await page.locator('#quick-add-dialog [data-shortcut]').evaluateAll((els) => els.map((e) => e.dataset.shortcut)), ['search', 'mine', 'exercise', 'burned']);
+  assert.equal(await page.locator('#quick-add-dialog [data-shortcut] svg.icon').count(), 4);
   await page.selectOption('#quick-meal', 'lunch');
-  await page.getByRole('button', { name: 'Log food' }).click();
+  await page.click('[data-shortcut="search"]');
   await page.waitForSelector('#food-panel:not([hidden])');
   await page.click('[data-tab="new"]');
   await page.fill('#cf-name', 'Quick add toast');
@@ -446,7 +496,7 @@ await check('quick add opens today’s food and exercise forms and updates the D
   await page.waitForSelector('[data-meal="lunch"] .entry');
 
   await page.click('#quick-add');
-  await page.locator('#quick-add-dialog').getByRole('button', { name: 'Log exercise' }).click();
+  await page.click('[data-shortcut="exercise"]');
   await page.waitForFunction(() => document.activeElement.id === 'workout-activity');
   await page.selectOption('#workout-activity', 'walk-brisk');
   await page.fill('#workout-duration', '20');
@@ -776,7 +826,7 @@ await check('training: run a routine, log sets with load, save, see history and 
   assert.match(await entry.textContent(), /Home with dumbbells/);
   assert.match(await entry.textContent(), /35 min · 3 sets · 245 kg lifted · effort 6\/10/);
   // (3.5 − 1) × 80 kg × 35/60 h = 116.7 -> 115
-  assert.match(await entry.textContent(), /About 115 kcal active energy \(estimate, not added/);
+  assert.match(await entry.textContent(), /About 115 kcal burned \(estimate\)/);
   await entry.locator('summary').click();
   assert.match(await entry.textContent(), /Goblet squat: 10 × 12 kg, 10 × 12\.5 kg/);
   assert.match(await page.textContent('#week-workouts'), /^1$/);
@@ -1505,6 +1555,60 @@ await check('scan: a food with no database match uses a labelled AI estimate, an
   stored = await page.evaluate(() => JSON.parse(localStorage.getItem('letsgetfit.data')));
   const again = stored.diary.find((e) => e.meal === 'dinner');
   assert.deepEqual([again.name, again.servingG, Math.round(again.nutrients.energy)], ['Apple and granola bowl', 180, 332]);
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+await check('meal scan shortcut: opens the camera at once; consent asked once; scanning effect; plus and minus on amounts', async () => {
+  const { page, context, errors } = await freshPage({}, { aiScan: 'enabled' });
+  let release;
+  const held = new Promise((r) => (release = r));
+  let calls = 0;
+  await page.route('**/api/scan.php', async (route) => {
+    calls += 1;
+    if (calls === 1) await held;
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ...SCAN_REPLY, items: [SCAN_REPLY.items[0]] }) });
+  });
+  await page.route('**/api/scan-feedback.php', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: '{"ok":true}' }));
+  await page.waitForFunction(async () => (await fetch('api/health.php')).ok);
+  await page.click('#quick-add');
+  await page.waitForSelector('[data-shortcut="scan"]');
+  assert.deepEqual(await page.locator('#quick-add-dialog [data-shortcut]').evaluateAll((els) => els.map((e) => e.dataset.shortcut)), ['search', 'scan', 'describe', 'mine', 'exercise', 'burned']);
+  // The tap on "Meal scan" opens the camera (a file chooser here) with nothing in between.
+  const [chooser] = await Promise.all([page.waitForEvent('filechooser'), page.click('[data-shortcut="scan"]')]);
+  assert.equal(await chooser.element().getAttribute('id'), 'scan-camera');
+  await chooser.setFiles({ name: 'meal.jpg', mimeType: 'image/jpeg', buffer: MEAL_JPEG });
+  // First time on this device: the explanation, and nothing sent yet.
+  await page.waitForSelector('#scan-consent');
+  assert.equal(calls, 0);
+  await page.click('#scan-analyse');
+  await page.waitForSelector('#scan-frame .scan-frame__line');
+  assert.match(await page.textContent('#scan-loading'), /Scanning your meal/);
+  assert.notEqual(await page.locator('.scan-frame__line').evaluate((el) => getComputedStyle(el).animationName), 'none');
+  release();
+  await page.waitForSelector('.scan-item');
+  assert.equal(await page.locator('#scan-frame').count(), 0);
+  // Amounts: 10 g at a time, never below 1 g.
+  await page.click('#scan-more-0');
+  await page.click('#scan-more-0');
+  assert.equal(await page.inputValue('#scan-grams-0'), '140');
+  assert.match(await page.textContent('#scan-totals [data-nutrient="energy"]'), /^73 kcal$/);
+  await page.click('#scan-less-0');
+  assert.equal(await page.inputValue('#scan-grams-0'), '130');
+  await page.fill('#scan-grams-0', '5');
+  await page.click('#scan-less-0');
+  assert.equal(await page.inputValue('#scan-grams-0'), '1');
+  await page.fill('#scan-grams-0', '100');
+  await page.check('#scan-confirm');
+  await page.click('#scan-save');
+  await page.waitForSelector('.entry');
+  // Next photo: no question again, straight to scanning and the result.
+  await page.click('#quick-add');
+  const [again] = await Promise.all([page.waitForEvent('filechooser'), page.click('[data-shortcut="scan"]')]);
+  await again.setFiles({ name: 'meal2.jpg', mimeType: 'image/jpeg', buffer: MEAL_JPEG });
+  await page.waitForSelector('.scan-item');
+  assert.equal(calls, 2);
+  assert.equal(await page.locator('#scan-consent').count(), 0);
   assert.deepEqual(errors, []);
   await context.close();
 });

@@ -45,7 +45,7 @@ export function initWorkouts(store, { onEditSession } = {}) {
   );
   setDateLimits(form.elements.localDate);
 
-  const labels = { localDate: 'Date', activityId: 'Activity type', durationMin: 'Duration' };
+  const labels = { localDate: 'Date', activityId: 'Activity type', durationMin: 'Duration', burnedKcal: 'Calories burned' };
 
   function resetForm() {
     editingId = null;
@@ -87,6 +87,7 @@ export function initWorkouts(store, { onEditSession } = {}) {
       metUsed: activity.met,
       weightKgUsed: result.value.showEstimate ? weightKg : null,
       estimatedActiveKcal: kcal,
+      burnedKcal: result.value.burnedKcal,
     };
     try {
       if (editingId) store.updateWorkout(editingId, record);
@@ -116,6 +117,7 @@ export function initWorkouts(store, { onEditSession } = {}) {
     form.elements.activityId.value = entry.activityId;
     form.elements.durationMin.value = entry.durationMin;
     form.elements.notes.value = entry.notes ?? '';
+    form.elements.burnedKcal.value = entry.burnedKcal ?? '';
     form.elements.showEstimate.checked = Boolean(entry.showEstimate);
     title.textContent = 'Edit workout';
     submit.textContent = 'Save changes';
@@ -155,11 +157,12 @@ export function initWorkouts(store, { onEditSession } = {}) {
           const label = activityLabel(entry);
           const when = formatLocalDate(entry.localDate);
           let estimate = null;
-          if (entry.showEstimate) {
+          if (Number.isFinite(entry.burnedKcal)) estimate = h('p', { class: 'entry__meta' }, `${formatNumber(entry.burnedKcal)} kcal burned (your figure)`);
+          else if (entry.showEstimate) {
             estimate =
               entry.estimatedActiveKcal === null || entry.estimatedActiveKcal === undefined
                 ? h('p', { class: 'entry__meta muted' }, 'No estimate available')
-                : h('p', { class: 'entry__meta' }, `About ${formatNumber(entry.estimatedActiveKcal)} kcal active energy (estimate, not added to your daily figure)`);
+                : h('p', { class: 'entry__meta' }, `About ${formatNumber(entry.estimatedActiveKcal)} kcal burned (estimate)`);
           }
           const isSession = entry.type === 'session';
           const stats = isSession ? sessionStats(entry) : null;
@@ -190,7 +193,7 @@ export function initWorkouts(store, { onEditSession } = {}) {
 
   store.subscribe(render);
   render();
-  async function openQuickAdd() {
+  async function openQuickAdd({ focus = 'activityId' } = {}) {
     if (editingId) {
       const discard = await confirmAction({
         title: 'Leave workout editing?',
@@ -206,7 +209,7 @@ export function initWorkouts(store, { onEditSession } = {}) {
     setDateLimits(form.elements.localDate);
     form.elements.localDate.value = toLocalDateString();
     form.scrollIntoView({ block: 'start' });
-    form.elements.activityId.focus({ preventScroll: true });
+    form.elements[focus].focus({ preventScroll: true });
   }
 
   return { render, resetForm, openQuickAdd };

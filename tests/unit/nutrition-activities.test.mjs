@@ -86,3 +86,22 @@ test('macro progress: percent of the guide amount, grams left, and grams over', 
   assert.deepEqual(macroProgress({ protein: 10 }, null), {});
   assert.ok(!('fat' in macroProgress({ fat: 10 }, { proteinG: 100, fatG: 0 })), 'no guide amount, no progress');
 });
+
+test('calories burned in a workout: own figure, then the saved estimate, then a fresh estimate', async () => {
+  const { workoutBurnedKcal, energyBalance } = await import('../../public/assets/js/lib/activities.js');
+  const walk = { activityId: 'walk-brisk', durationMin: 30 };
+  assert.equal(workoutBurnedKcal({ ...walk, burnedKcal: 320, estimatedActiveKcal: 100 }, 80), 320);
+  assert.equal(workoutBurnedKcal({ ...walk, estimatedActiveKcal: 100 }, 80), 100);
+  const met = getActivity('walk-brisk').met;
+  assert.equal(workoutBurnedKcal(walk, 80), roundActiveKcal((met - 1) * 80 * 0.5));
+  assert.equal(workoutBurnedKcal({ ...walk, metUsed: met, weightKgUsed: 60 }, 80), roundActiveKcal((met - 1) * 60 * 0.5), 'the weight saved with the workout');
+  assert.equal(workoutBurnedKcal(walk, null), null, 'no weight, no estimate');
+  assert.equal(workoutBurnedKcal({ activityId: 'other', durationMin: 30 }, 80), null);
+  assert.equal(workoutBurnedKcal({ activityId: 'other', durationMin: 30, burnedKcal: 150 }, null), 150);
+  // Balance = budget − eaten + burned.
+  assert.deepEqual(energyBalance({ budgetKcal: 2000, eatenKcal: 1500, burnedKcal: 300 }), { kcal: 800, kind: 'deficit' });
+  assert.deepEqual(energyBalance({ budgetKcal: 2000, eatenKcal: 2600, burnedKcal: 300 }), { kcal: 300, kind: 'surplus' });
+  assert.deepEqual(energyBalance({ budgetKcal: 2000, eatenKcal: 2300, burnedKcal: 300 }), { kcal: 0, kind: 'even' });
+  assert.deepEqual(energyBalance({ budgetKcal: 2000, eatenKcal: 500 }), { kcal: 1500, kind: 'deficit' });
+  assert.equal(energyBalance({ budgetKcal: null, eatenKcal: 500, burnedKcal: 0 }), null, 'no budget, nothing to compare');
+});

@@ -146,3 +146,9 @@ The AI model returns only food names, search terms, a gram estimate with a low�
 **Fallback when the database has no match.** The AI estimate is offered as the item's match, named “(AI estimate)”, only if every value passes these checks on the server (`OpenAiVision::estimate`): energy 0–900 kcal; protein, carbohydrate, fat and fibre each 0–100 g and together at most 105 g; and energy within the larger of 40 kcal or 35% of 4 × protein + 4 × carbohydrate + 9 × fat (Atwater general factors). Otherwise the item stays unmatched. Other nutrients are stored as unknown. These figures are not measured data and can be well off; the person can replace them with a database match or edit the food in My foods.
 
 **Saved meals.** A confirmed scan of two or more foods can be kept in My foods as one food: each nutrient per 100 g is the sum over the parts of (value per 100 g × grams ÷ 100), divided by the meal's total grams, × 100. A nutrient is unknown only if no part has it, so a meal total can be an under-count.
+
+## Calories burned and the daily balance
+
+- **Calories burned in a workout** (`workoutBurnedKcal` in `lib/activities.js`): the person's own figure if they entered one (1–5,000 kcal, for example from a watch); otherwise the MET estimate saved with the workout; otherwise a fresh MET estimate, (MET − 1) × weight in kg × hours, rounded to 5 kcal. "Other activity" has no estimate.
+- **Balance** (`energyBalance`): daily budget − calories eaten + calories burned. Positive is shown as a deficit, negative as a surplus. It is shown only when there is a budget and no logged food has unknown energy.
+- **Limit:** the budget is estimated maintenance for the chosen activity level (or the goal budget), which already allows for typical activity. Adding logged exercise on top can count some of it twice, so the balance can overstate a deficit. Device and machine figures are themselves estimates. The calorie apple still compares food with the budget only.
